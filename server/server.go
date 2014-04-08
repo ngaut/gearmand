@@ -129,11 +129,8 @@ func (self *Server) popJob(sessionId int64) (j *Job) {
 func (self *Server) wakeupWorker(funcName string) {
 	if wj, ok := self.funcWorker[funcName]; ok {
 		for it := wj.workers.Front(); it != nil; it.Next() {
-			reply, err := constructReply(NOOP, nil)
-			if err != nil {
-				log.Error(err)
-				return
-			}
+			reply := constructReply(NOOP, nil)
+
 			w := it.Value.(*Worker)
 			select {
 			case w.Outbox <- reply:
@@ -300,10 +297,7 @@ func (self *Server) handleProtoEvt(e *event) {
 			log.Warningf("client information lost, client sessionId", j.createBy)
 			break
 		}
-		reply, err := constructReply(e.tp, slice)
-		if err != nil {
-			log.Error(err)
-		}
+		reply := constructReply(e.tp, slice)
 
 		self.checkAndRemoveJob(e.tp, j)
 
@@ -383,15 +377,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- &event{tp: tp, fromSessionId: sessionId,
 				args: &Tuple{first: string(args[0])}}
 		case ECHO_REQ:
-			if buf == nil {
-				log.Error("argument missing")
-				return
-			}
-
-			reply, err := constructReply(ECHO_RES, [][]byte{buf})
-			if err != nil {
-				log.Debug(err)
-			}
+			reply := constructReply(ECHO_RES, [][]byte{buf})
 			outch <- reply
 		case PRE_SLEEP:
 			self.protoEvtCh <- &event{tp: tp,
@@ -404,22 +390,13 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- e
 			job := (<-e.result).(*Job)
 			if job == nil {
-				reply, err := constructReply(NO_JOB, nil)
-				if err != nil {
-					log.Debug(err)
-					break
-				}
-				outch <- reply
+				outch <- constructReply(NO_JOB, nil)
 				break
 			}
 
 			log.Debugf("%+v", job)
-			reply, err := constructReply(JOB_ASSIGN_UNIQ, [][]byte{
+			reply := constructReply(JOB_ASSIGN_UNIQ, [][]byte{
 				[]byte(job.handle), []byte(job.FuncName), []byte(job.id), job.data})
-			if err != nil {
-				log.Debug(err)
-				break
-			}
 			outch <- reply
 		case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW: //todo: handle difference
 			if c == nil {
@@ -431,10 +408,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			}
 			self.protoEvtCh <- e
 			handle := <-e.result
-			reply, err := constructReply(JOB_CREATED, [][]byte{[]byte(handle.(string))})
-			if err != nil {
-				log.Debug(err)
-			}
+			reply := constructReply(JOB_CREATED, [][]byte{[]byte(handle.(string))})
 			outch <- reply
 		case GET_STATUS:
 			e := &event{tp: tp, args: &Tuple{first: args[0]},
@@ -442,14 +416,10 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- e
 
 			resultArg := (<-e.result).(*Tuple)
-
-			reply, err := constructReply(STATUS_RES, [][]byte{resultArg.first.([]byte),
+			reply := constructReply(STATUS_RES, [][]byte{resultArg.first.([]byte),
 				bool2bytes(resultArg.second.(bool)), bool2bytes(resultArg.third.(bool)),
 				int2bytes(resultArg.fourth.(int)),
 				int2bytes(resultArg.fifth.(int))})
-			if err != nil {
-				log.Debug(err)
-			}
 			outch <- reply
 		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 			WORK_FAIL, WORK_EXCEPTION:

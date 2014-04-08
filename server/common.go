@@ -110,16 +110,16 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 	return nil, false
 }
 
-func constructReply(tp uint32, data [][]byte) ([]byte, error) {
+func constructReply(tp uint32, data [][]byte) []byte {
 	buf := &bytes.Buffer{}
 	err := binary.Write(buf, binary.BigEndian, uint32(res))
 	if err != nil {
-		return nil, err
+		panic("should never happend")
 	}
 
 	binary.Write(buf, binary.BigEndian, tp)
 	if err != nil {
-		return nil, err
+		panic("should never happend")
 	}
 
 	length := 0
@@ -132,7 +132,7 @@ func constructReply(tp uint32, data [][]byte) ([]byte, error) {
 
 	binary.Write(buf, binary.BigEndian, uint32(length))
 	if err != nil {
-		return nil, err
+		panic("should never happend")
 	}
 
 	for i, arg := range data {
@@ -142,7 +142,7 @@ func constructReply(tp uint32, data [][]byte) ([]byte, error) {
 		}
 	}
 
-	return buf.Bytes(), err
+	return buf.Bytes()
 }
 
 func validCmd(cmd uint32) bool {
