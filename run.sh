@@ -1,3 +1,3 @@
 go build
-./gearman
+./gearmand
 

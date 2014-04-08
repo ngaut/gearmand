@@ -1,7 +1,8 @@
-package main
+package server
 
 import (
-	"strconv"
+	"fmt"
+	"os"
 	"sync/atomic"
 	"time"
 )
@@ -23,7 +24,22 @@ type Job struct {
 
 var startJid int64 = 0
 
+var workerNameStr string
+
+func init() {
+	hn, err := os.Hostname()
+	if err != nil {
+		hn = os.Getenv("HOSTNAME")
+	}
+
+	if hn == "" {
+		hn = "localhost"
+	}
+
+	workerNameStr = fmt.Sprintf("%s-%d", hn, os.Getpid())
+}
+
 func allocJobId() string {
 	jid := atomic.AddInt64(&startJid, 1)
-	return strconv.Itoa(int(jid))
+	return fmt.Sprintf("H:%s:%d", workerNameStr, jid)
 }

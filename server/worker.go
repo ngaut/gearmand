@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"net"
@@ -11,11 +11,10 @@ const (
 
 type Worker struct {
 	net.Conn
-	sessionId   int64
+	Session
+
 	workerId    string
 	status      int
 	runningJobs map[string]*Job
 	canDo       map[string]bool
-
-	outbox chan []byte
 }

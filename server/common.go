@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"time"
 )
 
 var (
@@ -194,4 +195,67 @@ func ReadMessage(conn net.Conn) (uint32, []byte, error) {
 	}
 
 	return tp, buf, nil
+}
+
+func readHeader(conn net.Conn) (magic uint32, tp uint32, size uint32, err error) {
+	magic, err = readUint32(conn)
+	if err != nil {
+		return
+	}
+
+	if magic != req && magic != res {
+		log.Debugf("magic not match %v", magic)
+		err = invalidMagic
+		return
+	}
+
+	tp, err = readUint32(conn)
+	if err != nil {
+		return
+	}
+
+	if !validCmd(tp) {
+		err = invalidArg
+		return
+	}
+
+	size, err = readUint32(conn)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+type Tuple struct {
+	first, second, third, fourth, fifth, sixth interface{}
+}
+
+func writer(conn net.Conn, outbox chan []byte) {
+	defer conn.Close()
+	for {
+		select {
+		case msg, ok := <-outbox:
+			if !ok {
+				return
+			}
+			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_, err := conn.Write(msg)
+			if err != nil {
+				return
+			}
+		}
+	}
+}
+
+func readUint32(conn net.Conn) (uint32, error) {
+	var value uint32
+	err := binary.Read(conn, binary.BigEndian, &value)
+	return value, err
+}
+
+func ValidProtocolDef() {
+	if CAN_DO != 1 || SUBMIT_JOB_EPOCH != 36 { //protocol check
+		panic("protocol define not match")
+	}
 }
