@@ -2,6 +2,7 @@ package server
 
 import (
 	"container/list"
+	. "github.com/ngaut/gearmand/common"
 	log "github.com/ngaut/logging"
 	"net"
 	"strconv"
@@ -101,7 +102,7 @@ func (self *Server) addJob(j *Job) {
 
 func (self *Server) doAddJob(j *Job) {
 	self.addJob(j)
-	self.jobs[j.handle] = j
+	self.jobs[j.Handle] = j
 	self.wakeupWorker(j.FuncName)
 }
 
@@ -151,14 +152,14 @@ func (self *Server) checkAndRemoveJob(tp uint32, j *Job) {
 }
 
 func (self *Server) removeJob(j *Job) {
-	delete(self.jobs, j.handle)
-	delete(self.worker[j.processBy].runningJobs, j.handle)
+	delete(self.jobs, j.Handle)
+	delete(self.worker[j.ProcessBy].runningJobs, j.Handle)
 }
 
 func (self *Server) handleCtrlEvt(e *event) {
 	//args := e.args
 	switch e.tp {
-	case custormizeClose:
+	case ctrlCloseSession:
 		sessionId := e.fromSessionId
 		if w, ok := self.worker[sessionId]; ok {
 			if sessionId != w.SessionId {
@@ -167,8 +168,8 @@ func (self *Server) handleCtrlEvt(e *event) {
 			self.removeWorkerBySessionId(w.SessionId)
 			//reschdule these jobs
 			for handle, j := range w.runningJobs {
-				if handle != j.handle {
-					log.Fatal("handle not match %d-%d", handle, j.handle)
+				if handle != j.Handle {
+					log.Fatal("handle not match %d-%d", handle, j.Handle)
 				}
 				self.doAddJob(j)
 			}
@@ -181,7 +182,7 @@ func (self *Server) handleCtrlEvt(e *event) {
 		e.result <- true //notify close finish
 
 	default:
-		log.Warningf("%s, %d", cmdDescription(e.tp), e.tp)
+		log.Warningf("%s, %d", CmdDescription(e.tp), e.tp)
 	}
 }
 
@@ -214,11 +215,11 @@ func (self *Server) handleProtoEvt(e *event) {
 		sessionId := e.fromSessionId
 		j := self.popJob(sessionId)
 		if j != nil {
-			j.processAt = time.Now()
-			j.processBy = sessionId
-			delete(self.jobs, j.handle)
+			j.ProcessAt = time.Now()
+			j.ProcessBy = sessionId
+			delete(self.jobs, j.Handle)
 			//track this job
-			self.worker[sessionId].runningJobs[j.handle] = j
+			self.worker[sessionId].runningJobs[j.Handle] = j
 		}
 		//send job back
 		e.result <- j
@@ -229,39 +230,18 @@ func (self *Server) handleProtoEvt(e *event) {
 		c := args.first.(*Client)
 		self.client[c.SessionId] = c
 		funcName := bytes2str(args.second)
-		j := &Job{id: bytes2str(args.third), data: args.fourth.([]byte),
-			handle: allocJobId(), createAt: time.Now(), createBy: c.SessionId,
+		j := &Job{Id: bytes2str(args.third), Data: args.fourth.([]byte),
+			Handle: allocJobId(), CreateAt: time.Now(), CreateBy: c.SessionId,
 			FuncName: funcName}
-		log.Debugf("%v, job handle %v, %s", cmdDescription(e.tp), j.handle, string(j.data))
+		log.Debugf("%v, job handle %v, %s", CmdDescription(e.tp), j.Handle, string(j.Data))
 		//todo: persistent job to db
 		self.doAddJob(j)
-		e.result <- j.handle
-	case custormizeClose:
-		sessionId := e.fromSessionId
-		if w, ok := self.worker[sessionId]; ok {
-			if sessionId != w.SessionId {
-				log.Fatalf("sessionId not match %d-%d, bug found", sessionId, w.SessionId)
-			}
-			self.removeWorkerBySessionId(w.SessionId)
-			//reschdule these jobs
-			for handle, j := range w.runningJobs {
-				if handle != j.handle {
-					log.Fatal("handle not match %d-%d", handle, j.handle)
-				}
-				self.doAddJob(j)
-			}
-			delete(self.worker, sessionId)
-		}
-		if c, ok := self.client[sessionId]; ok {
-			log.Debug("removeClient sessionId", sessionId)
-			delete(self.client, c.SessionId)
-		}
-		e.result <- true //notify close finish
+		e.result <- j.Handle
 	case GET_STATUS:
 		jobhandle := bytes2str(args.first)
 		if job, ok := self.jobs[jobhandle]; ok {
-			e.result <- &Tuple{first: args.first, second: true, third: job.running,
-				fourth: job.percent, fifth: job.denominator}
+			e.result <- &Tuple{first: args.first, second: true, third: job.Running,
+				fourth: job.Percent, fifth: job.Denominator}
 			break
 		}
 
@@ -274,27 +254,27 @@ func (self *Server) handleProtoEvt(e *event) {
 		sessionId := e.fromSessionId
 		j, ok := self.worker[sessionId].runningJobs[jobhandle]
 
-		log.Debugf("%v job handle %v", cmdDescription(e.tp), jobhandle)
+		log.Debugf("%v job handle %v", CmdDescription(e.tp), jobhandle)
 		if !ok {
 			log.Warningf("job information lost, %v job handle %v, %+v",
-				cmdDescription(e.tp), jobhandle, self.jobs)
+				CmdDescription(e.tp), jobhandle, self.jobs)
 			break
 		}
 
-		if j.handle != jobhandle {
+		if j.Handle != jobhandle {
 			log.Fatal("job handle not match")
 		}
 
 		if WORK_STATUS == e.tp {
-			j.percent, _ = strconv.Atoi(string(slice[1]))
-			j.denominator, _ = strconv.Atoi(string(slice[2]))
+			j.Percent, _ = strconv.Atoi(string(slice[1]))
+			j.Denominator, _ = strconv.Atoi(string(slice[2]))
 		}
 
-		//todo: as protocol's description, we should broadcast to all clients, not the original client
+		//todo: as protocol description, we should broadcast to all clients, not the original client
 		//now, just notify original client
-		c, ok := self.client[j.createBy]
+		c, ok := self.client[j.CreateBy]
 		if !ok {
-			log.Warningf("client information lost, client sessionId", j.createBy)
+			log.Warningf("client information lost, client sessionId", j.CreateBy)
 			break
 		}
 		reply := constructReply(e.tp, slice)
@@ -308,7 +288,7 @@ func (self *Server) handleProtoEvt(e *event) {
 		}
 
 	default:
-		log.Warningf("%s, %d", cmdDescription(e.tp), e.tp)
+		log.Warningf("%s, %d", CmdDescription(e.tp), e.tp)
 	}
 }
 
@@ -333,13 +313,11 @@ func (self *Server) handleConnection(conn net.Conn) {
 	var c *Client
 	outch := make(chan []byte, 200)
 	defer func() {
-		if sessionId != 0 { //notify close
-			e := &event{tp: custormizeClose, fromSessionId: sessionId,
-				result: make(chan interface{}, 1)}
-			self.ctrlEvtCh <- e
-			<-e.result
-		}
-		close(outch)
+		e := &event{tp: ctrlCloseSession, fromSessionId: sessionId,
+			result: make(chan interface{}, 1)}
+		self.ctrlEvtCh <- e
+		<-e.result
+		close(outch) //notify writer to quit
 	}()
 
 	log.Debug("new sessionId", sessionId, "address:", conn.RemoteAddr())
@@ -355,11 +333,11 @@ func (self *Server) handleConnection(conn net.Conn) {
 
 		args, ok := decodeArgs(tp, buf)
 		if !ok {
-			log.Debug("tp:", cmdDescription(tp), "argc not match", "details:", string(buf))
+			log.Debug("tp:", CmdDescription(tp), "argc not match", "details:", string(buf))
 			return
 		}
 
-		log.Debug("tp:", cmdDescription(tp), "len(args):", len(args), "details:", string(buf))
+		log.Debug("tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
 
 		switch tp {
 		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support
@@ -396,7 +374,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 
 			log.Debugf("%+v", job)
 			reply := constructReply(JOB_ASSIGN_UNIQ, [][]byte{
-				[]byte(job.handle), []byte(job.FuncName), []byte(job.id), job.data})
+				[]byte(job.Handle), []byte(job.FuncName), []byte(job.Id), job.Data})
 			outch <- reply
 		case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW: //todo: handle difference
 			if c == nil {
@@ -427,7 +405,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{first: args},
 				fromSessionId: sessionId}
 		default:
-			log.Warningf("not support type %s", cmdDescription(tp))
+			log.Warningf("not support type %s", CmdDescription(tp))
 		}
 	}
 }

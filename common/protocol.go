@@ -1,4 +1,4 @@
-package server
+package common
 
 /*
 Binary Packet
@@ -77,10 +77,10 @@ const (
 	minPacketLength = 12
 
 	// \x00REQ
-	req    = 5391697
+	Req    = 5391697
 	reqStr = "\x00REQ"
 	// \x00RES
-	res    = 5391699
+	Res    = 5391699
 	resStr = "\x00RES"
 
 	HANDLE_SHAKE_HEADER_LENGTH = 12
@@ -147,6 +147,4 @@ const (
 	SUBMIT_JOB_LOW_BG  //  REQ    Client
 	SUBMIT_JOB_SCHED   //  REQ    Client
 	SUBMIT_JOB_EPOCH   //   36 REQ    Client
-
-	custormizeClose = 1000
 )

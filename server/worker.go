@@ -1,6 +1,7 @@
 package server
 
 import (
+	. "github.com/ngaut/gearmand/common"
 	"net"
 )
 
