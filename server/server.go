@@ -327,7 +327,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 	for {
 		tp, buf, err := ReadMessage(conn)
 		if err != nil {
-			log.Info(err)
+			log.Error(err)
 			return
 		}
 
@@ -361,6 +361,12 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- &event{tp: tp,
 				args: &Tuple{first: sessionId}}
 		case SET_CLIENT_ID:
+			if w == nil {
+				w = &Worker{
+					Conn: conn, status: wsRuning, Session: Session{SessionId: sessionId,
+						Outbox: outch, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
+					canDo: make(map[string]bool)}
+			}
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{first: w, second: string(args[0])}}
 		case GRAB_JOB_UNIQ:
 			e := &event{tp: tp, fromSessionId: sessionId,
@@ -368,6 +374,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- e
 			job := (<-e.result).(*Job)
 			if job == nil {
+				log.Warning("no job")
 				outch <- constructReply(NO_JOB, nil)
 				break
 			}
