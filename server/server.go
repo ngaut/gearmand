@@ -186,6 +186,31 @@ func (self *Server) handleCtrlEvt(e *event) {
 	}
 }
 
+func (self *Server) handleSubmitJob(e *event) {
+	args := e.args
+	c := args.first.(*Client)
+	self.client[c.SessionId] = c
+	funcName := bytes2str(args.second)
+	j := &Job{Id: bytes2str(args.third), Data: args.fourth.([]byte),
+		Handle: allocJobId(), CreateAt: time.Now(), CreateBy: c.SessionId,
+		FuncName: funcName, Priority: PRIORITY_LOW}
+
+	switch e.tp {
+	case SUBMIT_JOB_LOW_BG, SUBMIT_JOB_HIGH_BG:
+		j.IsBackGround = true
+	}
+
+	switch e.tp {
+	case SUBMIT_JOB_HIGH, SUBMIT_JOB_HIGH_BG:
+		j.Priority = PRIORITY_HIGH
+	}
+
+	log.Debugf("%v, job handle %v, %s", CmdDescription(e.tp), j.Handle, string(j.Data))
+	//todo: persistent job to db
+	self.doAddJob(j)
+	e.result <- j.Handle
+}
+
 func (self *Server) handleWorkReport(e *event) {
 	args := e.args
 	slice := args.first.([][]byte)
@@ -268,19 +293,7 @@ func (self *Server) handleProtoEvt(e *event) {
 		sessionId := args.first.(int64)
 		self.worker[sessionId].status = wsSleep
 	case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
-		c := args.first.(*Client)
-		self.client[c.SessionId] = c
-		funcName := bytes2str(args.second)
-		j := &Job{Id: bytes2str(args.third), Data: args.fourth.([]byte),
-			Handle: allocJobId(), CreateAt: time.Now(), CreateBy: c.SessionId,
-			FuncName: funcName}
-		if e.tp == SUBMIT_JOB_LOW_BG {
-			j.IsBackGround = true
-		}
-		log.Debugf("%v, job handle %v, %s", CmdDescription(e.tp), j.Handle, string(j.Data))
-		//todo: persistent job to db
-		self.doAddJob(j)
-		e.result <- j.Handle
+		self.handleSubmitJob(e)
 	case GET_STATUS:
 		jobhandle := bytes2str(args.first)
 		if job, ok := self.jobs[jobhandle]; ok {
@@ -386,7 +399,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 				break
 			}
 
-			log.Debugf("%+v", job)
+			//log.Debugf("%+v", job)
 			reply := constructReply(JOB_ASSIGN_UNIQ, [][]byte{
 				[]byte(job.Handle), []byte(job.FuncName), []byte(job.Id), job.Data})
 			outch <- reply

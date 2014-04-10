@@ -4,6 +4,11 @@ import (
 	"time"
 )
 
+const (
+	PRIORITY_LOW  = 0
+	PRIORITY_HIGH = 1
+)
+
 type Job struct {
 	Handle       string //server job handle
 	Id           string
@@ -18,4 +23,5 @@ type Job struct {
 	ProcessBy    int64 //worker sessionId
 	FuncName     string
 	IsBackGround bool
+	Priority     int
 }
