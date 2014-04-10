@@ -186,6 +186,47 @@ func (self *Server) handleCtrlEvt(e *event) {
 	}
 }
 
+func (self *Server) handleWorkReport(e *event) {
+	args := e.args
+	slice := args.first.([][]byte)
+	jobhandle := bytes2str(slice[0])
+	sessionId := e.fromSessionId
+	j, ok := self.worker[sessionId].runningJobs[jobhandle]
+
+	log.Debugf("%v job handle %v", CmdDescription(e.tp), jobhandle)
+	if !ok {
+		log.Warningf("job information lost, %v job handle %v, %+v",
+			CmdDescription(e.tp), jobhandle, self.jobs)
+		return
+	}
+
+	if j.Handle != jobhandle {
+		log.Fatal("job handle not match")
+	}
+
+	if WORK_STATUS == e.tp {
+		j.Percent, _ = strconv.Atoi(string(slice[1]))
+		j.Denominator, _ = strconv.Atoi(string(slice[2]))
+	}
+
+	//todo: as protocol description, we should broadcast to all clients, not the original client
+	//now, just notify original client
+	c, ok := self.client[j.CreateBy]
+	if !ok {
+		log.Warningf("client information lost, client sessionId", j.CreateBy)
+		return
+	}
+	reply := constructReply(e.tp, slice)
+
+	self.checkAndRemoveJob(e.tp, j)
+
+	select {
+	case c.Outbox <- reply:
+	default:
+		log.Warning("client is full %+v", c)
+	}
+}
+
 func (self *Server) handleProtoEvt(e *event) {
 	args := e.args
 	switch e.tp {
@@ -233,6 +274,9 @@ func (self *Server) handleProtoEvt(e *event) {
 		j := &Job{Id: bytes2str(args.third), Data: args.fourth.([]byte),
 			Handle: allocJobId(), CreateAt: time.Now(), CreateBy: c.SessionId,
 			FuncName: funcName}
+		if e.tp == SUBMIT_JOB_LOW_BG {
+			j.IsBackGround = true
+		}
 		log.Debugf("%v, job handle %v, %s", CmdDescription(e.tp), j.Handle, string(j.Data))
 		//todo: persistent job to db
 		self.doAddJob(j)
@@ -249,44 +293,7 @@ func (self *Server) handleProtoEvt(e *event) {
 			fourth: 0, fifth: 100}
 	case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 		WORK_FAIL, WORK_EXCEPTION:
-		slice := args.first.([][]byte)
-		jobhandle := bytes2str(slice[0])
-		sessionId := e.fromSessionId
-		j, ok := self.worker[sessionId].runningJobs[jobhandle]
-
-		log.Debugf("%v job handle %v", CmdDescription(e.tp), jobhandle)
-		if !ok {
-			log.Warningf("job information lost, %v job handle %v, %+v",
-				CmdDescription(e.tp), jobhandle, self.jobs)
-			break
-		}
-
-		if j.Handle != jobhandle {
-			log.Fatal("job handle not match")
-		}
-
-		if WORK_STATUS == e.tp {
-			j.Percent, _ = strconv.Atoi(string(slice[1]))
-			j.Denominator, _ = strconv.Atoi(string(slice[2]))
-		}
-
-		//todo: as protocol description, we should broadcast to all clients, not the original client
-		//now, just notify original client
-		c, ok := self.client[j.CreateBy]
-		if !ok {
-			log.Warningf("client information lost, client sessionId", j.CreateBy)
-			break
-		}
-		reply := constructReply(e.tp, slice)
-
-		self.checkAndRemoveJob(e.tp, j)
-
-		select {
-		case c.Outbox <- reply:
-		default:
-			log.Warning("client is full %+v", c)
-		}
-
+		self.handleWorkReport(e)
 	default:
 		log.Warningf("%s, %d", CmdDescription(e.tp), e.tp)
 	}
@@ -305,6 +312,17 @@ func (self *Server) EvtLoop() {
 
 func (self *Server) allocSessionId() int64 {
 	return atomic.AddInt64(&self.startSessionId, 1)
+}
+
+func (self *Server) getWorker(w *Worker, sessionId int64, outch chan []byte, conn net.Conn) *Worker {
+	if w == nil {
+		return &Worker{
+			Conn: conn, status: wsRuning, Session: Session{SessionId: sessionId,
+				Outbox: outch, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
+			canDo: make(map[string]bool)}
+	}
+
+	return w
 }
 
 func (self *Server) handleConnection(conn net.Conn) {
@@ -341,13 +359,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 
 		switch tp {
 		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support
-			if w == nil {
-				w = &Worker{
-					Conn: conn, status: wsRuning, Session: Session{SessionId: sessionId,
-						Outbox: outch, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
-					canDo: make(map[string]bool)}
-			}
-
+			w = self.getWorker(w, sessionId, outch, conn)
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{
 				first:  w,
 				second: string(args[0])}}
@@ -361,12 +373,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- &event{tp: tp,
 				args: &Tuple{first: sessionId}}
 		case SET_CLIENT_ID:
-			if w == nil {
-				w = &Worker{
-					Conn: conn, status: wsRuning, Session: Session{SessionId: sessionId,
-						Outbox: outch, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
-					canDo: make(map[string]bool)}
-			}
+			w = self.getWorker(w, sessionId, outch, conn)
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{first: w, second: string(args[0])}}
 		case GRAB_JOB_UNIQ:
 			e := &event{tp: tp, fromSessionId: sessionId,

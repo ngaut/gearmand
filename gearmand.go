@@ -11,7 +11,7 @@ import (
 
 func main() {
 	flag.Parse()
-	log.SetLevelByString("error")
+	//log.SetLevelByString("error")
 	runtime.GOMAXPROCS(2)
 	gearmand.ValidProtocolDef()
 	go gearmand.NewServer().Start()

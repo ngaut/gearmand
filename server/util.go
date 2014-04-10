@@ -69,7 +69,7 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 	argc := common.ArgCount(cmd)
 	endPos := 0
 	args := make([][]byte, 0)
-	log.Debug("cmd:", common.CmdDescription(cmd), "details:", buf)
+	//log.Debug("cmd:", common.CmdDescription(cmd), "details:", buf)
 	if argc == 0 {
 		return nil, true
 	}
@@ -93,7 +93,7 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 		return args, true
 	}
 
-	log.Errorf("%d-%d", argc, len(args))
+	log.Errorf("argc not match %d-%d", argc, len(args))
 
 	return nil, false
 }
