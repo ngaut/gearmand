@@ -41,5 +41,10 @@ wip
 	[Current:  20389 jobs/s, Total:   4843 jobs/s]
 	[Current:    777 jobs/s, Total:   4755 jobs/s]
 	[Current:   5097 jobs/s, Total:   4764 jobs/s]
+	
+	
+	benchmark tools:
+	gearmand-1.1.12/benchmark$ ./blobslap_client -c 1000 -n 10000
+	gearmand-1.1.12/benchmark$ ./blobslap_worker
 
 
