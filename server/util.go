@@ -208,10 +208,12 @@ func readHeader(r io.Reader) (magic uint32, tp uint32, size uint32, err error) {
 func clearOutbox(outbox chan []byte) {
 	for {
 		select {
-		case _, ok := <-outbox:
+		case b, ok := <-outbox:
 			if !ok { //channel is empty
 				return
 			}
+
+			_ = b //compiler bug
 		}
 	}
 }

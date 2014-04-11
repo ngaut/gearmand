@@ -360,7 +360,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 
 	go writer(conn, outch)
 
-	r := bufio.NewReaderSize(conn, 81920)
+	r := bufio.NewReaderSize(conn, 128*1024)
 
 	for {
 		tp, buf, err := ReadMessage(r)
@@ -375,7 +375,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			return
 		}
 
-		log.Debug("tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
+		//log.Debug("tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
 
 		switch tp {
 		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support
@@ -435,7 +435,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			outch <- reply
 		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 			WORK_FAIL, WORK_EXCEPTION:
-			log.Debugf("%s", string(buf))
+			//log.Debugf("%s", string(buf))
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: args},
 				fromSessionId: sessionId}
 		default:
