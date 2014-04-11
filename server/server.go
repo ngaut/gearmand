@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bufio"
 	"container/list"
 	. "github.com/ngaut/gearmand/common"
 	log "github.com/ngaut/logging"
@@ -130,9 +131,13 @@ func (self *Server) popJob(sessionId int64) (j *Job) {
 func (self *Server) wakeupWorker(funcName string) {
 	if wj, ok := self.funcWorker[funcName]; ok {
 		for it := wj.workers.Front(); it != nil; it.Next() {
+			w := it.Value.(*Worker)
+			if w.status != wsSleep {
+				continue
+			}
+
 			reply := constructReply(NOOP, nil)
 
-			w := it.Value.(*Worker)
 			select {
 			case w.Outbox <- reply:
 			default: //todo:maybe this worker is dead
@@ -166,7 +171,7 @@ func (self *Server) handleCtrlEvt(e *event) {
 				log.Fatalf("sessionId not match %d-%d, bug found", sessionId, w.SessionId)
 			}
 			self.removeWorkerBySessionId(w.SessionId)
-			//reschdule these jobs
+			//reschedule these jobs
 			for handle, j := range w.runningJobs {
 				if handle != j.Handle {
 					log.Fatal("handle not match %d-%d", handle, j.Handle)
@@ -188,16 +193,17 @@ func (self *Server) handleCtrlEvt(e *event) {
 
 func (self *Server) handleSubmitJob(e *event) {
 	args := e.args
-	c := args.first.(*Client)
+	c := args.t0.(*Client)
 	self.client[c.SessionId] = c
-	funcName := bytes2str(args.second)
-	j := &Job{Id: bytes2str(args.third), Data: args.fourth.([]byte),
+	funcName := bytes2str(args.t1)
+	j := &Job{Id: bytes2str(args.t2), Data: args.t3.([]byte),
 		Handle: allocJobId(), CreateAt: time.Now(), CreateBy: c.SessionId,
 		FuncName: funcName, Priority: PRIORITY_LOW}
 
 	switch e.tp {
 	case SUBMIT_JOB_LOW_BG, SUBMIT_JOB_HIGH_BG:
 		j.IsBackGround = true
+		//todo: persistent job
 	}
 
 	switch e.tp {
@@ -205,15 +211,14 @@ func (self *Server) handleSubmitJob(e *event) {
 		j.Priority = PRIORITY_HIGH
 	}
 
-	log.Debugf("%v, job handle %v, %s", CmdDescription(e.tp), j.Handle, string(j.Data))
-	//todo: persistent job to db
+	//log.Debugf("%v, job handle %v, %s", CmdDescription(e.tp), j.Handle, string(j.Data))
 	self.doAddJob(j)
 	e.result <- j.Handle
 }
 
 func (self *Server) handleWorkReport(e *event) {
 	args := e.args
-	slice := args.first.([][]byte)
+	slice := args.t0.([][]byte)
 	jobhandle := bytes2str(slice[0])
 	sessionId := e.fromSessionId
 	j, ok := self.worker[sessionId].runningJobs[jobhandle]
@@ -234,21 +239,21 @@ func (self *Server) handleWorkReport(e *event) {
 		j.Denominator, _ = strconv.Atoi(string(slice[2]))
 	}
 
-	//todo: as protocol description, we should broadcast to all clients, not the original client
-	//now, just notify original client
-	c, ok := self.client[j.CreateBy]
-	if !ok {
-		log.Warningf("client information lost, client sessionId", j.CreateBy)
-		return
-	}
-	reply := constructReply(e.tp, slice)
-
 	self.checkAndRemoveJob(e.tp, j)
 
-	select {
-	case c.Outbox <- reply:
-	default:
-		log.Warning("client is full %+v", c)
+	//If BackGround, the client is not updated with status or notified when the job has completed (it is detached)
+	if j.IsBackGround {
+		return
+	}
+
+	//notify all clients
+	for _, c := range self.client {
+		reply := constructReply(e.tp, slice)
+		select {
+		case c.Outbox <- reply:
+		default:
+			log.Warning("client is full %+v", c)
+		}
 	}
 }
 
@@ -256,26 +261,26 @@ func (self *Server) handleProtoEvt(e *event) {
 	args := e.args
 	switch e.tp {
 	case CAN_DO:
-		w := args.first.(*Worker)
-		funcName := args.second.(string)
+		w := args.t0.(*Worker)
+		funcName := args.t1.(string)
 		w.canDo[funcName] = true
 		self.handleCanDo(funcName, w)
 		self.worker[w.SessionId] = w
 	case CANT_DO:
 		sessionId := e.fromSessionId
-		funcName := args.first.(string)
+		funcName := args.t0.(string)
 		if jw, ok := self.funcWorker[funcName]; ok {
 			self.removeWorker(jw.workers, sessionId)
 		}
 		self.worker[sessionId].canDo[funcName] = false
 	case SET_CLIENT_ID:
-		w := args.first.(*Worker)
-		w.workerId = args.second.(string)
+		w := args.t0.(*Worker)
+		w.workerId = args.t1.(string)
 		log.Debug(w.workerId)
 	case CAN_DO_TIMEOUT: //todo: fix timeout support, now just as CAN_DO
-		w := args.first.(*Worker)
-		log.Debug("funcName", args.second)
-		self.handleCanDo(args.second.(string), w)
+		w := args.t0.(*Worker)
+		log.Debug("funcName", args.t1)
+		self.handleCanDo(args.t1.(string), w)
 		self.worker[w.SessionId] = w
 	case GRAB_JOB_UNIQ:
 		sessionId := e.fromSessionId
@@ -290,20 +295,20 @@ func (self *Server) handleProtoEvt(e *event) {
 		//send job back
 		e.result <- j
 	case PRE_SLEEP:
-		sessionId := args.first.(int64)
+		sessionId := args.t0.(int64)
 		self.worker[sessionId].status = wsSleep
 	case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
 		self.handleSubmitJob(e)
 	case GET_STATUS:
-		jobhandle := bytes2str(args.first)
+		jobhandle := bytes2str(args.t0)
 		if job, ok := self.jobs[jobhandle]; ok {
-			e.result <- &Tuple{first: args.first, second: true, third: job.Running,
-				fourth: job.Percent, fifth: job.Denominator}
+			e.result <- &Tuple{t0: args.t0, t1: true, t2: job.Running,
+				t3: job.Percent, t4: job.Denominator}
 			break
 		}
 
-		e.result <- &Tuple{first: args.first, second: false, third: false,
-			fourth: 0, fifth: 100}
+		e.result <- &Tuple{t0: args.t0, t1: false, t2: false,
+			t3: 0, t4: 100}
 	case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 		WORK_FAIL, WORK_EXCEPTION:
 		self.handleWorkReport(e)
@@ -328,14 +333,14 @@ func (self *Server) allocSessionId() int64 {
 }
 
 func (self *Server) getWorker(w *Worker, sessionId int64, outch chan []byte, conn net.Conn) *Worker {
-	if w == nil {
-		return &Worker{
-			Conn: conn, status: wsRuning, Session: Session{SessionId: sessionId,
-				Outbox: outch, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
-			canDo: make(map[string]bool)}
+	if w != nil {
+		return w
 	}
 
-	return w
+	return &Worker{
+		Conn: conn, status: wsRuning, Session: Session{SessionId: sessionId,
+			Outbox: outch, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
+		canDo: make(map[string]bool)}
 }
 
 func (self *Server) handleConnection(conn net.Conn) {
@@ -355,8 +360,10 @@ func (self *Server) handleConnection(conn net.Conn) {
 
 	go writer(conn, outch)
 
+	r := bufio.NewReaderSize(conn, 81920)
+
 	for {
-		tp, buf, err := ReadMessage(conn)
+		tp, buf, err := ReadMessage(r)
 		if err != nil {
 			log.Error(err)
 			return
@@ -374,20 +381,20 @@ func (self *Server) handleConnection(conn net.Conn) {
 		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support
 			w = self.getWorker(w, sessionId, outch, conn)
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{
-				first:  w,
-				second: string(args[0])}}
+				t0: w,
+				t1: string(args[0])}}
 		case CANT_DO:
 			self.protoEvtCh <- &event{tp: tp, fromSessionId: sessionId,
-				args: &Tuple{first: string(args[0])}}
+				args: &Tuple{t0: string(args[0])}}
 		case ECHO_REQ:
 			reply := constructReply(ECHO_RES, [][]byte{buf})
 			outch <- reply
 		case PRE_SLEEP:
 			self.protoEvtCh <- &event{tp: tp,
-				args: &Tuple{first: sessionId}}
+				args: &Tuple{t0: sessionId}}
 		case SET_CLIENT_ID:
 			w = self.getWorker(w, sessionId, outch, conn)
-			self.protoEvtCh <- &event{tp: tp, args: &Tuple{first: w, second: string(args[0])}}
+			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: w, t1: string(args[0])}}
 		case GRAB_JOB_UNIQ:
 			e := &event{tp: tp, fromSessionId: sessionId,
 				result: make(chan interface{}, 1)}
@@ -408,7 +415,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 				c = &Client{Session: Session{SessionId: sessionId, Outbox: outch, ConnectAt: time.Now()}}
 			}
 			e := &event{tp: tp,
-				args:   &Tuple{first: c, second: args[0], third: args[1], fourth: args[2]},
+				args:   &Tuple{t0: c, t1: args[0], t2: args[1], t3: args[2]},
 				result: make(chan interface{}, 1),
 			}
 			self.protoEvtCh <- e
@@ -416,20 +423,20 @@ func (self *Server) handleConnection(conn net.Conn) {
 			reply := constructReply(JOB_CREATED, [][]byte{[]byte(handle.(string))})
 			outch <- reply
 		case GET_STATUS:
-			e := &event{tp: tp, args: &Tuple{first: args[0]},
+			e := &event{tp: tp, args: &Tuple{t0: args[0]},
 				result: make(chan interface{}, 1)}
 			self.protoEvtCh <- e
 
 			resultArg := (<-e.result).(*Tuple)
-			reply := constructReply(STATUS_RES, [][]byte{resultArg.first.([]byte),
-				bool2bytes(resultArg.second.(bool)), bool2bytes(resultArg.third.(bool)),
-				int2bytes(resultArg.fourth.(int)),
-				int2bytes(resultArg.fifth.(int))})
+			reply := constructReply(STATUS_RES, [][]byte{resultArg.t0.([]byte),
+				bool2bytes(resultArg.t1.(bool)), bool2bytes(resultArg.t2.(bool)),
+				int2bytes(resultArg.t3.(int)),
+				int2bytes(resultArg.t4.(int))})
 			outch <- reply
 		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 			WORK_FAIL, WORK_EXCEPTION:
 			log.Debugf("%s", string(buf))
-			self.protoEvtCh <- &event{tp: tp, args: &Tuple{first: args},
+			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: args},
 				fromSessionId: sessionId}
 		default:
 			log.Warningf("not support type %s", CmdDescription(tp))

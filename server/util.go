@@ -26,8 +26,8 @@ const (
 )
 
 var (
-	startJid      int64 = 0
-	workerNameStr string
+	startJid int64 = 0
+	fmtstr   string
 )
 
 func init() {
@@ -40,12 +40,13 @@ func init() {
 		hn = "localhost"
 	}
 
-	workerNameStr = fmt.Sprintf("%s-%d", hn, os.Getpid())
+	workerNameStr := fmt.Sprintf("%s-%d", hn, os.Getpid())
+	fmtstr = fmt.Sprintf("H:%s:", workerNameStr) + `%d`
 }
 
 func allocJobId() string {
 	jid := atomic.AddInt64(&startJid, 1)
-	return fmt.Sprintf("H:%s:%d", workerNameStr, jid)
+	return fmt.Sprintf(fmtstr, jid)
 }
 
 type event struct {
@@ -62,7 +63,7 @@ type jobworkermap struct {
 }
 
 type Tuple struct {
-	first, second, third, fourth, fifth, sixth interface{}
+	t0, t1, t2, t3, t4, t5 interface{}
 }
 
 func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
@@ -159,20 +160,20 @@ func int2bytes(n int) []byte {
 	return []byte(strconv.Itoa(n))
 }
 
-func ReadMessage(conn net.Conn) (uint32, []byte, error) {
-	_, tp, size, err := readHeader(conn)
+func ReadMessage(r io.Reader) (uint32, []byte, error) {
+	_, tp, size, err := readHeader(r)
 	if err != nil {
 		return 0, nil, err
 	}
 
 	buf := make([]byte, size)
-	_, err = io.ReadFull(conn, buf)
+	_, err = io.ReadFull(r, buf)
 
 	return tp, buf, err
 }
 
-func readHeader(conn net.Conn) (magic uint32, tp uint32, size uint32, err error) {
-	magic, err = readUint32(conn)
+func readHeader(r io.Reader) (magic uint32, tp uint32, size uint32, err error) {
+	magic, err = readUint32(r)
 	if err != nil {
 		return
 	}
@@ -183,23 +184,23 @@ func readHeader(conn net.Conn) (magic uint32, tp uint32, size uint32, err error)
 		return
 	}
 
-	tp, err = readUint32(conn)
+	tp, err = readUint32(r)
 	if err != nil {
 		return
 	}
 
 	if !validCmd(tp) {
 		//gearman's bug, as protocol, we should treat this an error, but gearman allow it
-		if tp == 39 { //wtf: benchmark worker send this
+		if tp == 39 { //wtf: benchmark worker send this, and i can not find it in protocol description
 			tp = common.GRAB_JOB_UNIQ
-			size, err = readUint32(conn)
+			size, err = readUint32(r)
 			return
 		}
 		err = invalidArg
 		return
 	}
 
-	size, err = readUint32(conn)
+	size, err = readUint32(r)
 
 	return
 }
@@ -221,24 +222,32 @@ func writer(conn net.Conn, outbox chan []byte) {
 		clearOutbox(outbox) //incase reader is blocked
 	}()
 
+	b := bytes.NewBuffer(nil)
+
 	for {
 		select {
 		case msg, ok := <-outbox:
 			if !ok {
 				return
 			}
+			b.Write(msg)
+			for n := len(outbox); n > 0; n-- {
+				b.Write(<-outbox)
+			}
+
 			conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			_, err := conn.Write(msg)
+			_, err := conn.Write(b.Bytes())
 			if err != nil {
 				return
 			}
+			b.Reset()
 		}
 	}
 }
 
-func readUint32(conn net.Conn) (uint32, error) {
+func readUint32(r io.Reader) (uint32, error) {
 	var value uint32
-	err := binary.Read(conn, binary.BigEndian, &value)
+	err := binary.Read(r, binary.BigEndian, &value)
 	return value, err
 }
 
