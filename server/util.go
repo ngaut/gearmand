@@ -101,6 +101,7 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 	}
 
 	args = append(args, buf[endPos:]) //last one is data
+	cnt++
 
 	if cnt != argc {
 		log.Errorf("argc not match %d-%d", argc, len(args))

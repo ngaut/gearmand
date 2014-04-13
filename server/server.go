@@ -285,7 +285,9 @@ func (self *Server) handleProtoEvt(e *event) {
 			j.ProcessBy = sessionId
 			delete(self.jobs, j.Handle)
 			//track this job
-			self.worker[sessionId].runningJobs[j.Handle] = j
+			w := self.worker[sessionId]
+			w.runningJobs[j.Handle] = j
+			w.status = wsRuning
 		}
 		//send job back
 		e.result <- j
