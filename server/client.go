@@ -13,3 +13,12 @@ type Session struct {
 type Client struct {
 	Session
 }
+
+func (self *Session) TrySend(data []byte) bool {
+	select {
+	case self.Outbox <- data:
+		return true
+	default:
+		return false
+	}
+}

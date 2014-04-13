@@ -137,10 +137,7 @@ func (self *Server) wakeupWorker(funcName string) {
 			}
 
 			reply := constructReply(NOOP, nil)
-
-			select {
-			case w.Outbox <- reply:
-			default: //todo:maybe this worker is dead
+			if !w.TrySend(reply) {
 				log.Warningf("worker sessionId %d is full, cap %d", w.SessionId, cap(w.Outbox))
 			}
 
@@ -249,9 +246,7 @@ func (self *Server) handleWorkReport(e *event) {
 	//notify all clients
 	for _, c := range self.client {
 		reply := constructReply(e.tp, slice)
-		select {
-		case c.Outbox <- reply:
-		default:
+		if !c.TrySend(reply) {
 			log.Warning("client is full %+v", c)
 		}
 	}
