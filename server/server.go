@@ -410,7 +410,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			reply := constructReply(JOB_ASSIGN_UNIQ, [][]byte{
 				[]byte(job.Handle), []byte(job.FuncName), []byte(job.Id), job.Data})
 			outch <- reply
-		case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW: //todo: handle difference
+		case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
 			if c == nil {
 				c = &Client{Session: Session{SessionId: sessionId, Outbox: outch, ConnectAt: time.Now()}}
 			}

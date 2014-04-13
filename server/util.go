@@ -41,6 +41,7 @@ func init() {
 	}
 
 	workerNameStr := fmt.Sprintf("%s-%d", hn, os.Getpid())
+	//cache fmtstr
 	fmtstr = fmt.Sprintf("H:%s:", workerNameStr) + `%d`
 }
 
@@ -68,18 +69,19 @@ type Tuple struct {
 
 func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 	argc := common.ArgCount(cmd)
-	endPos := 0
-	args := make([][]byte, 0)
 	//log.Debug("cmd:", common.CmdDescription(cmd), "details:", buf)
 	if argc == 0 {
 		return nil, true
 	}
+
+	args := make([][]byte, argc)
 
 	if argc == 1 {
 		args = append(args, buf)
 		return args, true
 	}
 
+	endPos := 0
 	for i := 0; i < argc-1 && endPos < len(buf); i++ {
 		startPos := endPos
 		pos := bytes.IndexByte(buf[startPos:], 0x0)
@@ -90,13 +92,12 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 
 	args = append(args, buf[endPos:]) //last one is data
 
-	if len(args) == argc {
-		return args, true
+	if len(args) != argc {
+		log.Errorf("argc not match %d-%d", argc, len(args))
+		return nil, false
 	}
 
-	log.Errorf("argc not match %d-%d", argc, len(args))
-
-	return nil, false
+	return args, true
 }
 
 func constructReply(tp uint32, data [][]byte) []byte {
@@ -213,7 +214,7 @@ func clearOutbox(outbox chan []byte) {
 				return
 			}
 
-			_ = b //compiler bug
+			_ = b //compiler bug (tip)
 		}
 	}
 }
