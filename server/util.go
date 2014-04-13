@@ -82,17 +82,27 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 	}
 
 	endPos := 0
-	for i := 0; i < argc-1 && endPos < len(buf); i++ {
+	cnt := 0
+	for ; cnt < argc-1 && endPos < len(buf); cnt++ {
 		startPos := endPos
 		pos := bytes.IndexByte(buf[startPos:], 0x0)
+		if pos == -1 {
+			log.Warning("invalid protocol")
+			return nil, false
+		}
 		endPos = startPos + pos
 		args = append(args, buf[startPos:endPos])
 		endPos++
 	}
 
+	if endPos == len(buf) {
+		log.Warning("invalid protocol")
+		return nil, false
+	}
+
 	args = append(args, buf[endPos:]) //last one is data
 
-	if len(args) != argc {
+	if cnt != argc {
 		log.Errorf("argc not match %d-%d", argc, len(args))
 		return nil, false
 	}
