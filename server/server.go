@@ -301,7 +301,7 @@ func (self *Server) handleProtoEvt(e *event) {
 		sessionId := e.fromSessionId
 		w, ok := self.worker[sessionId]
 		if !ok {
-			log.Errorf("unregister worker, sessionId %d", sessionId)
+			log.Fatalf("unregister worker, sessionId %d", sessionId)
 			break
 		}
 
@@ -321,7 +321,14 @@ func (self *Server) handleProtoEvt(e *event) {
 		e.result <- j
 	case PRE_SLEEP:
 		sessionId := args.t0.(int64)
-		self.worker[sessionId].status = wsSleep
+		w, ok := self.worker[sessionId]
+		if !ok {
+			log.Warningf("unregister worker, sessionId %d", sessionId)
+			self.worker[w.SessionId] = w
+			break
+		}
+
+		w.status = wsSleep
 		log.Warningf("worker sessionId %d sleep", sessionId)
 	case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
 		self.handleSubmitJob(e)
@@ -338,6 +345,8 @@ func (self *Server) handleProtoEvt(e *event) {
 	case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 		WORK_FAIL, WORK_EXCEPTION:
 		self.handleWorkReport(e)
+	case ctrlCloseSession:
+		self.handleCtrlEvt(e)
 	default:
 		log.Warningf("%s, %d", CmdDescription(e.tp), e.tp)
 	}
@@ -358,7 +367,7 @@ func (self *Server) EvtLoop() {
 		case e := <-self.protoEvtCh:
 			self.handleProtoEvt(e)
 		case e := <-self.ctrlEvtCh:
-			self.handleCtrlEvt(e)
+			_ = e
 		case <-tick.C:
 			self.wakeupTravel()
 		}
@@ -388,7 +397,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 	defer func() {
 		e := &event{tp: ctrlCloseSession, fromSessionId: sessionId,
 			result: make(chan interface{}, 1)}
-		self.ctrlEvtCh <- e
+		self.protoEvtCh <- e
 		<-e.result
 		close(outch) //notify writer to quit
 	}()
@@ -412,7 +421,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			return
 		}
 
-		//log.Debug("sessionId", sessionId, "tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
+		log.Debug("sessionId", sessionId, "tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
 
 		switch tp {
 		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support
@@ -425,7 +434,8 @@ func (self *Server) handleConnection(conn net.Conn) {
 		case ECHO_REQ:
 			sendReply(outch, ECHO_RES, [][]byte{buf})
 		case PRE_SLEEP:
-			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: sessionId}}
+			w = self.getWorker(w, sessionId, outch, conn)
+			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: sessionId, t1: w}}
 		case SET_CLIENT_ID:
 			w = self.getWorker(w, sessionId, outch, conn)
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: w, t1: string(args[0])}}
