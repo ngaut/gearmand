@@ -330,6 +330,8 @@ func (self *Server) handleProtoEvt(e *event) {
 
 		w.status = wsSleep
 		log.Warningf("worker sessionId %d sleep", sessionId)
+		//todo:check if there is any job for this worker, so we don't need using ticker
+		//and it' more realtime
 	case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
 		self.handleSubmitJob(e)
 	case GET_STATUS:
