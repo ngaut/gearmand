@@ -26,8 +26,9 @@ const (
 )
 
 var (
-	startJid int64 = 0
-	fmtstr   string
+	startJid        int64 = 0
+	jobHandlePrefix string
+	respMagic       = []byte(common.ResStr)
 )
 
 func init() {
@@ -42,12 +43,12 @@ func init() {
 
 	workerNameStr := fmt.Sprintf("%s-%d", hn, os.Getpid())
 	//cache fmtstr
-	fmtstr = fmt.Sprintf("H:%s:", workerNameStr) + `%d`
+	jobHandlePrefix = fmt.Sprintf("H:%s:", workerNameStr)
 }
 
 func allocJobId() string {
 	jid := atomic.AddInt64(&startJid, 1)
-	return fmt.Sprintf(fmtstr, jid)
+	return jobHandlePrefix + strconv.FormatInt(jid, 10)
 }
 
 type event struct {
@@ -74,7 +75,7 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 		return nil, true
 	}
 
-	args := make([][]byte, argc)
+	args := make([][]byte, 0, argc)
 
 	if argc == 1 {
 		args = append(args, buf)
@@ -95,12 +96,7 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 		endPos++
 	}
 
-	if endPos == len(buf) {
-		log.Warning("invalid protocol")
-		return nil, false
-	}
-
-	args = append(args, buf[endPos:]) //last one is data
+	args = append(args, buf[endPos:]) //option data
 	cnt++
 
 	if cnt != argc {
@@ -111,14 +107,15 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 	return args, true
 }
 
+func sendReply(out chan []byte, tp uint32, data [][]byte) {
+	out <- constructReply(tp, data)
+}
+
 func constructReply(tp uint32, data [][]byte) []byte {
 	buf := &bytes.Buffer{}
-	err := binary.Write(buf, binary.BigEndian, uint32(common.Res))
-	if err != nil {
-		panic("should never happend")
-	}
+	buf.Write(respMagic)
 
-	binary.Write(buf, binary.BigEndian, tp)
+	err := binary.Write(buf, binary.BigEndian, tp)
 	if err != nil {
 		panic("should never happend")
 	}
@@ -131,7 +128,7 @@ func constructReply(tp uint32, data [][]byte) []byte {
 		}
 	}
 
-	binary.Write(buf, binary.BigEndian, uint32(length))
+	err = binary.Write(buf, binary.BigEndian, uint32(length))
 	if err != nil {
 		panic("should never happend")
 	}

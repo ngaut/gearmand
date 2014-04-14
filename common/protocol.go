@@ -78,10 +78,10 @@ const (
 
 	// \x00REQ
 	Req    = 5391697
-	reqStr = "\x00REQ"
+	ReqStr = "\x00REQ"
 	// \x00RES
 	Res    = 5391699
-	resStr = "\x00RES"
+	ResStr = "\x00RES"
 
 	HANDLE_SHAKE_HEADER_LENGTH = 12
 )

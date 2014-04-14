@@ -83,21 +83,24 @@ func (self *Server) removeWorkerBySessionId(sessionId int64) {
 }
 
 func (self *Server) handleCanDo(funcName string, w *Worker) {
+	jw := self.getJobWorkPair(funcName)
+
+	self.addWorker(jw.workers, w)
+	self.worker[w.SessionId] = w
+}
+
+func (self *Server) getJobWorkPair(funcName string) *jobworkermap {
 	jw, ok := self.funcWorker[funcName]
 	if !ok { //create list
 		jw = &jobworkermap{workers: list.New(), jobs: list.New()}
 		self.funcWorker[funcName] = jw
 	}
 
-	self.addWorker(jw.workers, w)
-	self.worker[w.SessionId] = w
+	return jw
 }
 
 func (self *Server) addJob(j *Job) {
-	jw, ok := self.funcWorker[j.FuncName]
-	if !ok { //create list
-		jw = &jobworkermap{workers: list.New(), jobs: list.New()}
-	}
+	jw := self.getJobWorkPair(j.FuncName)
 	jw.jobs.PushBack(j)
 }
 
@@ -139,7 +142,10 @@ func (self *Server) wakeupWorker(funcName string) {
 			reply := constructReply(NOOP, nil)
 			if !w.TrySend(reply) {
 				log.Warningf("worker sessionId %d is full, cap %d", w.SessionId, cap(w.Outbox))
+				continue
 			}
+
+			//w.status = wsRuning
 
 			return
 		}
@@ -274,7 +280,6 @@ func (self *Server) handleProtoEvt(e *event) {
 		log.Debug(w.workerId)
 	case CAN_DO_TIMEOUT: //todo: fix timeout support, now just as CAN_DO
 		w := args.t0.(*Worker)
-		log.Debug("funcName", args.t1)
 		self.handleCanDo(args.t1.(string), w)
 		self.worker[w.SessionId] = w
 	case GRAB_JOB_UNIQ:
@@ -285,9 +290,7 @@ func (self *Server) handleProtoEvt(e *event) {
 			j.ProcessBy = sessionId
 			delete(self.jobs, j.Handle)
 			//track this job
-			w := self.worker[sessionId]
-			w.runningJobs[j.Handle] = j
-			w.status = wsRuning
+			self.worker[sessionId].runningJobs[j.Handle] = j
 		}
 		//send job back
 		e.result <- j
@@ -357,7 +360,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 
 	go writer(conn, outch)
 
-	r := bufio.NewReaderSize(conn, 128*1024)
+	r := bufio.NewReaderSize(conn, 256*1024)
 
 	for {
 		tp, buf, err := ReadMessage(r)
@@ -378,17 +381,14 @@ func (self *Server) handleConnection(conn net.Conn) {
 		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support
 			w = self.getWorker(w, sessionId, outch, conn)
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{
-				t0: w,
-				t1: string(args[0])}}
+				t0: w, t1: string(args[0])}}
 		case CANT_DO:
 			self.protoEvtCh <- &event{tp: tp, fromSessionId: sessionId,
 				args: &Tuple{t0: string(args[0])}}
 		case ECHO_REQ:
-			reply := constructReply(ECHO_RES, [][]byte{buf})
-			outch <- reply
+			sendReply(outch, ECHO_RES, [][]byte{buf})
 		case PRE_SLEEP:
-			self.protoEvtCh <- &event{tp: tp,
-				args: &Tuple{t0: sessionId}}
+			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: sessionId}}
 		case SET_CLIENT_ID:
 			w = self.getWorker(w, sessionId, outch, conn)
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: w, t1: string(args[0])}}
@@ -404,9 +404,8 @@ func (self *Server) handleConnection(conn net.Conn) {
 			}
 
 			//log.Debugf("%+v", job)
-			reply := constructReply(JOB_ASSIGN_UNIQ, [][]byte{
+			sendReply(outch, JOB_ASSIGN_UNIQ, [][]byte{
 				[]byte(job.Handle), []byte(job.FuncName), []byte(job.Id), job.Data})
-			outch <- reply
 		case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
 			if c == nil {
 				c = &Client{Session: Session{SessionId: sessionId, Outbox: outch, ConnectAt: time.Now()}}
@@ -417,19 +416,17 @@ func (self *Server) handleConnection(conn net.Conn) {
 			}
 			self.protoEvtCh <- e
 			handle := <-e.result
-			reply := constructReply(JOB_CREATED, [][]byte{[]byte(handle.(string))})
-			outch <- reply
+			sendReply(outch, JOB_CREATED, [][]byte{[]byte(handle.(string))})
 		case GET_STATUS:
 			e := &event{tp: tp, args: &Tuple{t0: args[0]},
 				result: make(chan interface{}, 1)}
 			self.protoEvtCh <- e
 
 			resultArg := (<-e.result).(*Tuple)
-			reply := constructReply(STATUS_RES, [][]byte{resultArg.t0.([]byte),
+			sendReply(outch, STATUS_RES, [][]byte{resultArg.t0.([]byte),
 				bool2bytes(resultArg.t1.(bool)), bool2bytes(resultArg.t2.(bool)),
 				int2bytes(resultArg.t3.(int)),
 				int2bytes(resultArg.t4.(int))})
-			outch <- reply
 		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 			WORK_FAIL, WORK_EXCEPTION:
 			//log.Debugf("%s", string(buf))
