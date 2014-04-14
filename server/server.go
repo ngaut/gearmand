@@ -295,7 +295,9 @@ func (self *Server) handleProtoEvt(e *event) {
 		log.Debug(w.workerId)
 	case CAN_DO_TIMEOUT: //todo: fix timeout support, now just as CAN_DO
 		w := args.t0.(*Worker)
-		self.handleCanDo(args.t1.(string), w)
+		funcName := args.t1.(string)
+		w.canDo[funcName] = true
+		self.handleCanDo(funcName, w)
 		self.worker[w.SessionId] = w
 	case GRAB_JOB_UNIQ:
 		sessionId := e.fromSessionId
