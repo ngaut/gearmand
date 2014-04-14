@@ -132,23 +132,26 @@ func (self *Server) popJob(sessionId int64) (j *Job) {
 }
 
 func (self *Server) wakeupWorker(funcName string) {
-	if wj, ok := self.funcWorker[funcName]; ok {
-		for it := wj.workers.Front(); it != nil; it.Next() {
-			w := it.Value.(*Worker)
-			if w.status != wsSleep {
-				continue
-			}
+	wj, ok := self.funcWorker[funcName]
+	if !ok {
+		return
+	}
 
-			reply := constructReply(NOOP, nil)
-			if !w.TrySend(reply) {
-				log.Warningf("worker sessionId %d is full, cap %d", w.SessionId, cap(w.Outbox))
-				continue
-			}
-
-			//w.status = wsRuning
-
-			return
+	for it := wj.workers.Front(); it != nil; it = it.Next() {
+		w := it.Value.(*Worker)
+		if w.status != wsSleep {
+			continue
 		}
+
+		log.Debug("wakeup sessionId", w.SessionId)
+
+		reply := constructReply(NOOP, nil)
+		if !w.TrySend(reply) {
+			log.Warningf("worker sessionId %d is full, cap %d", w.SessionId, cap(w.Outbox))
+			continue
+		}
+
+		return
 	}
 }
 
@@ -174,6 +177,7 @@ func (self *Server) handleCtrlEvt(e *event) {
 				log.Fatalf("sessionId not match %d-%d, bug found", sessionId, w.SessionId)
 			}
 			self.removeWorkerBySessionId(w.SessionId)
+			delete(self.worker, sessionId)
 			//reschedule these jobs
 			for handle, j := range w.runningJobs {
 				if handle != j.Handle {
@@ -181,7 +185,6 @@ func (self *Server) handleCtrlEvt(e *event) {
 				}
 				self.doAddJob(j)
 			}
-			delete(self.worker, sessionId)
 		}
 		if c, ok := self.client[sessionId]; ok {
 			log.Debug("removeClient sessionId", sessionId)
@@ -249,12 +252,24 @@ func (self *Server) handleWorkReport(e *event) {
 		return
 	}
 
-	//notify all clients
-	for _, c := range self.client {
-		reply := constructReply(e.tp, slice)
-		if !c.TrySend(reply) {
-			log.Warning("client is full %+v", c)
-		}
+	//broadcast all clients, which is a really bad idea
+	//for _, c := range self.client {
+	//	reply := constructReply(e.tp, slice)
+	//	if !c.TrySend(reply) {
+	//		log.Warningf("client is full %+v", c)
+	//	}
+	//}
+
+	//just send to original client, which is a bad idea too
+	c, ok := self.client[j.CreateBy]
+	if !ok {
+		log.Warning(j.Handle, "sessionId", j.CreateBy, "missing")
+		return
+	}
+
+	reply := constructReply(e.tp, slice)
+	if !c.TrySend(reply) {
+		log.Warningf("client is full %+v", c)
 	}
 }
 
@@ -284,19 +299,30 @@ func (self *Server) handleProtoEvt(e *event) {
 		self.worker[w.SessionId] = w
 	case GRAB_JOB_UNIQ:
 		sessionId := e.fromSessionId
+		w, ok := self.worker[sessionId]
+		if !ok {
+			log.Errorf("unregister worker, sessionId %d", sessionId)
+			break
+		}
+
+		w.status = wsRuning
+
 		j := self.popJob(sessionId)
 		if j != nil {
 			j.ProcessAt = time.Now()
 			j.ProcessBy = sessionId
 			delete(self.jobs, j.Handle)
 			//track this job
-			self.worker[sessionId].runningJobs[j.Handle] = j
+			w.runningJobs[j.Handle] = j
+		} else { //no job
+			w.status = wsPrepareForSleep
 		}
 		//send job back
 		e.result <- j
 	case PRE_SLEEP:
 		sessionId := args.t0.(int64)
 		self.worker[sessionId].status = wsSleep
+		log.Warningf("worker sessionId %d sleep", sessionId)
 	case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
 		self.handleSubmitJob(e)
 	case GET_STATUS:
@@ -317,13 +343,24 @@ func (self *Server) handleProtoEvt(e *event) {
 	}
 }
 
+func (self *Server) wakeupTravel() {
+	for k, jw := range self.funcWorker {
+		if jw.jobs.Len() > 0 {
+			self.wakeupWorker(k)
+		}
+	}
+}
+
 func (self *Server) EvtLoop() {
+	tick := time.NewTicker(time.Second)
 	for {
 		select {
 		case e := <-self.protoEvtCh:
 			self.handleProtoEvt(e)
 		case e := <-self.ctrlEvtCh:
 			self.handleCtrlEvt(e)
+		case <-tick.C:
+			self.wakeupTravel()
 		}
 	}
 }
@@ -338,7 +375,7 @@ func (self *Server) getWorker(w *Worker, sessionId int64, outch chan []byte, con
 	}
 
 	return &Worker{
-		Conn: conn, status: wsRuning, Session: Session{SessionId: sessionId,
+		Conn: conn, status: wsSleep, Session: Session{SessionId: sessionId,
 			Outbox: outch, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
 		canDo: make(map[string]bool)}
 }
@@ -365,7 +402,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 	for {
 		tp, buf, err := ReadMessage(r)
 		if err != nil {
-			log.Error(err)
+			log.Error(err, "sessionId", sessionId)
 			return
 		}
 
@@ -375,7 +412,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			return
 		}
 
-		//log.Debug("tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
+		//log.Debug("sessionId", sessionId, "tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
 
 		switch tp {
 		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support

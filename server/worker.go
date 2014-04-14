@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	wsRuning = 1
-	wsSleep  = 2
+	wsRuning          = 1
+	wsSleep           = 2
+	wsPrepareForSleep = 3
 )
 
 type Worker struct {

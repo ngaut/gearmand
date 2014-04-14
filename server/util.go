@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"sync/atomic"
 	"time"
 )
 
@@ -29,6 +28,7 @@ var (
 	startJid        int64 = 0
 	jobHandlePrefix string
 	respMagic       = []byte(common.ResStr)
+	jidCh           = make(chan string, 50)
 )
 
 func init() {
@@ -44,11 +44,20 @@ func init() {
 	workerNameStr := fmt.Sprintf("%s-%d", hn, os.Getpid())
 	//cache fmtstr
 	jobHandlePrefix = fmt.Sprintf("H:%s:", workerNameStr)
+	go func() {
+		for {
+			jidCh <- genJid()
+		}
+	}()
+}
+
+func genJid() string {
+	startJid++
+	return jobHandlePrefix + strconv.FormatInt(startJid, 10)
 }
 
 func allocJobId() string {
-	jid := atomic.AddInt64(&startJid, 1)
-	return jobHandlePrefix + strconv.FormatInt(jid, 10)
+	return <-jidCh
 }
 
 type event struct {
@@ -148,7 +157,9 @@ func validCmd(cmd uint32) bool {
 		return true
 	}
 
-	log.Warningf("invalid cmd %d", cmd)
+	if cmd != 39 { //filter gearmand
+		log.Warningf("invalid cmd %d", cmd)
+	}
 
 	return false
 }
