@@ -47,6 +47,14 @@ wip
 	gearmand-1.1.12/benchmark$ ./blobslap_client -c 1000 -n 10000
 	gearmand-1.1.12/benchmark$ ./blobslap_worker
 
+how to start gearmand?
+
+	./gearmand --addr="0.0.0.0:4730"
+	
+then choose client librarys form
+
+	http://gearman.org/download/
+
 
 how to track stats:
 

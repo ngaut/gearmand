@@ -38,7 +38,7 @@ func NewServer() *Server {
 	//todo: load background jobs from storage
 }
 
-func (self *Server) Start() {
+func (self *Server) Start(addr string) {
 	ln, err := net.Listen("tcp", ":4730")
 	if err != nil {
 		log.Fatal(err)
@@ -46,7 +46,7 @@ func (self *Server) Start() {
 
 	go self.EvtLoop()
 
-	log.Debug("listening")
+	log.Debug("listening on", addr)
 
 	for {
 		conn, err := ln.Accept()
@@ -330,11 +330,11 @@ func (self *Server) handleProtoEvt(e *event) {
 		//send job back
 		e.result <- j
 	case PRE_SLEEP:
-		sessionId := args.t0.(int64)
+		sessionId := e.fromSessionId
 		w, ok := self.worker[sessionId]
 		if !ok {
 			log.Warningf("unregister worker, sessionId %d", sessionId)
-			w = args.t1.(*Worker)
+			w = args.t0.(*Worker)
 			self.worker[w.SessionId] = w
 			break
 		}
@@ -377,14 +377,14 @@ func (self *Server) wakeupTravel() {
 	}
 }
 
-func (self *Server) showCounter() {
+func (self *Server) pubCounter() {
 	for k, v := range self.opCounter {
 		stats.PubInt64(CmdDescription(k), v)
 	}
 }
 
 func (self *Server) EvtLoop() {
-	tick := time.NewTicker(3 * time.Second)
+	tick := time.NewTicker(1 * time.Second)
 	for {
 		select {
 		case e := <-self.protoEvtCh:
@@ -392,7 +392,7 @@ func (self *Server) EvtLoop() {
 		case e := <-self.ctrlEvtCh:
 			_ = e
 		case <-tick.C:
-			self.showCounter()
+			self.pubCounter()
 		}
 	}
 }
@@ -436,7 +436,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 	for {
 		tp, buf, err := ReadMessage(r)
 		if err != nil {
-			log.Error(err, "sessionId", sessionId)
+			log.Debug(err, "sessionId", sessionId)
 			return
 		}
 
@@ -460,7 +460,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			sendReply(outch, ECHO_RES, [][]byte{buf})
 		case PRE_SLEEP:
 			w = self.getWorker(w, sessionId, outch, conn)
-			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: sessionId, t1: w}}
+			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: w}, fromSessionId: sessionId}
 		case SET_CLIENT_ID:
 			w = self.getWorker(w, sessionId, outch, conn)
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: w, t1: string(args[0])}}
@@ -499,11 +499,11 @@ func (self *Server) handleConnection(conn net.Conn) {
 				result: createResCh()}
 			self.protoEvtCh <- e
 
-			resultArg := (<-e.result).(*Tuple)
-			sendReply(outch, STATUS_RES, [][]byte{resultArg.t0.([]byte),
-				bool2bytes(resultArg.t1.(bool)), bool2bytes(resultArg.t2.(bool)),
-				int2bytes(resultArg.t3.(int)),
-				int2bytes(resultArg.t4.(int))})
+			resp := (<-e.result).(*Tuple)
+			sendReply(outch, STATUS_RES, [][]byte{resp.t0.([]byte),
+				bool2bytes(resp.t1.(bool)), bool2bytes(resp.t2.(bool)),
+				int2bytes(resp.t3.(int)),
+				int2bytes(resp.t4.(int))})
 		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 			WORK_FAIL, WORK_EXCEPTION:
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: args},
