@@ -5,7 +5,7 @@ import (
 )
 
 type JobQueue interface {
-	AddJob(j *Job)
-	DoneJob(j *Job)
-	ReplayJobs() []*Job
+	AddJob(j *Job) error
+	DoneJob(j *Job) error
+	GetJobs() ([]*Job, error)
 }

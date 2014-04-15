@@ -10,12 +10,15 @@ import (
 )
 
 var addr = flag.String("addr", ":4730", "listening on, such as 0.0.0.0:4730")
+var path = flag.String("coredump", "./", "coredump file path")
 
 func main() {
 	flag.Parse()
-	log.SetLevelByString("error")
-	runtime.GOMAXPROCS(2)
-	gearmand.ValidProtocolDef()
-	go gearmand.NewServer().Start(*addr)
+	gearmand.PublishCmdline()
+	gearmand.RegisterCoreDump(*path)
+	log.SetLevelByString("warning")
+	log.SetHighlighting(false)
+	runtime.GOMAXPROCS(1)
+	go gearmand.NewServer(nil).Start(*addr)
 	log.Error(http.ListenAndServe(":6060", nil))
 }

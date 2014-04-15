@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"container/list"
 	. "github.com/ngaut/gearmand/common"
+	"github.com/ngaut/gearmand/storage"
 	log "github.com/ngaut/logging"
 	"github.com/ngaut/stats"
 	"net"
@@ -22,9 +23,15 @@ type Server struct {
 
 	startSessionId int64
 	opCounter      map[uint32]int64
+	store          storage.JobQueue
 }
 
-func NewServer() *Server {
+var ( //const replys, to avoid building it every time
+	wakeupReply = constructReply(NOOP, nil)
+	nojobReply  = constructReply(NO_JOB, nil)
+)
+
+func NewServer(store storage.JobQueue) *Server {
 	return &Server{
 		funcWorker: make(map[string]*jobworkermap),
 		protoEvtCh: make(chan *event, 100),
@@ -83,6 +90,7 @@ func (self *Server) removeWorkerBySessionId(sessionId int64) {
 	for _, jw := range self.funcWorker {
 		self.removeWorker(jw.workers, sessionId)
 	}
+	delete(self.worker, sessionId)
 }
 
 func (self *Server) handleCanDo(funcName string, w *Worker) {
@@ -149,8 +157,7 @@ func (self *Server) wakeupWorker(funcName string) bool {
 
 		log.Debug("wakeup sessionId", w.SessionId)
 
-		reply := constructReply(NOOP, nil)
-		if !w.TrySend(reply) {
+		if !w.TrySend(wakeupReply) {
 			log.Warningf("worker sessionId %d is full, cap %d", w.SessionId, cap(w.Outbox))
 			continue
 		}
@@ -183,13 +190,12 @@ func (self *Server) handleCtrlEvt(e *event) {
 				log.Fatalf("sessionId not match %d-%d, bug found", sessionId, w.SessionId)
 			}
 			self.removeWorkerBySessionId(w.SessionId)
-			delete(self.worker, sessionId)
-			//reschedule these jobs
+
+			//reschedule these jobs, so other workers can handle it
 			for handle, j := range w.runningJobs {
 				if handle != j.Handle {
 					log.Fatal("handle not match %d-%d", handle, j.Handle)
 				}
-
 				self.doAddJob(j)
 			}
 		}
@@ -267,7 +273,9 @@ func (self *Server) handleWorkReport(e *event) {
 	//	}
 	//}
 
-	//just send to original client, which is a bad idea too
+	//just send to original client, which is a bad idea too.
+	//if need work status notification, you should create co-worker.
+	//let worker send status to this co-worker
 	c, ok := self.client[j.CreateBy]
 	if !ok {
 		log.Warning(j.Handle, "sessionId", j.CreateBy, "missing")
@@ -275,15 +283,22 @@ func (self *Server) handleWorkReport(e *event) {
 	}
 
 	reply := constructReply(e.tp, slice)
-	if !c.TrySend(reply) {
+	//_ = reply
+	//_ = c
+	if !c.TrySend(reply) { //it's kind of slow
 		log.Warningf("client is full %+v", c)
 	}
 }
 
 func (self *Server) handleProtoEvt(e *event) {
 	args := e.args
-	if e.tp != ctrlCloseSession {
+	if e.tp < ctrlCloseSession {
 		self.opCounter[e.tp]++
+	}
+
+	if e.tp >= ctrlCloseSession {
+		self.handleCtrlEvt(e)
+		return
 	}
 
 	switch e.tp {
@@ -291,7 +306,6 @@ func (self *Server) handleProtoEvt(e *event) {
 		w := args.t0.(*Worker)
 		funcName := args.t1.(string)
 		self.handleCanDo(funcName, w)
-		self.worker[w.SessionId] = w
 	case CANT_DO:
 		sessionId := e.fromSessionId
 		funcName := args.t0.(string)
@@ -306,7 +320,6 @@ func (self *Server) handleProtoEvt(e *event) {
 		w := args.t0.(*Worker)
 		funcName := args.t1.(string)
 		self.handleCanDo(funcName, w)
-		self.worker[w.SessionId] = w
 	case GRAB_JOB_UNIQ:
 		sessionId := e.fromSessionId
 		w, ok := self.worker[sessionId]
@@ -315,13 +328,12 @@ func (self *Server) handleProtoEvt(e *event) {
 			break
 		}
 
-		w.status = wsRuning
+		w.status = wsRunning
 
 		j := self.popJob(sessionId)
 		if j != nil {
 			j.ProcessAt = time.Now()
 			j.ProcessBy = sessionId
-			delete(self.jobs, j.Handle)
 			//track this job
 			w.runningJobs[j.Handle] = j
 		} else { //no job
@@ -341,7 +353,7 @@ func (self *Server) handleProtoEvt(e *event) {
 
 		w.status = wsSleep
 		log.Debugf("worker sessionId %d sleep", sessionId)
-		//todo:check if there is any job for this worker
+		//check if there is any job for this worker
 		for k, _ := range w.canDo {
 			if self.wakeupWorker(k) {
 				break
@@ -362,8 +374,6 @@ func (self *Server) handleProtoEvt(e *event) {
 	case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 		WORK_FAIL, WORK_EXCEPTION:
 		self.handleWorkReport(e)
-	case ctrlCloseSession:
-		self.handleCtrlEvt(e)
 	default:
 		log.Warningf("%s, %d", CmdDescription(e.tp), e.tp)
 	}
@@ -475,7 +485,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			job := (<-e.result).(*Job)
 			if job == nil {
 				log.Debug(sessionId, "no job")
-				sendReply(outch, NO_JOB, nil)
+				sendReplyResult(outch, nojobReply)
 				break
 			}
 

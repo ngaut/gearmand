@@ -1,6 +1,8 @@
 package common
 
 import (
+	"bytes"
+	"encoding/json"
 	"time"
 )
 
@@ -24,4 +26,31 @@ type Job struct {
 	FuncName     string
 	IsBackGround bool
 	Priority     int
+}
+
+func (self *Job) String() string {
+	b := &bytes.Buffer{}
+	enc := json.NewEncoder(b)
+	m := make(map[string]interface{})
+	m["Handle"] = self.Handle
+	m["Id"] = self.Id
+	m["Data"] = string(self.Data)
+	m["Running"] = self.Running
+	m["Percent"] = self.Percent
+	m["Denominator"] = self.Denominator
+	m["CreateAt"] = self.CreateAt
+	m["ProcessAt"] = self.ProcessAt
+	m["Running"] = self.Running
+	m["TimeoutSec"] = self.TimeoutSec
+	m["CreateBy"] = self.CreateBy
+	m["ProcessBy"] = self.ProcessBy
+	m["FuncName"] = self.FuncName
+	m["IsBackGround"] = self.IsBackGround
+	m["Priority"] = self.Priority
+
+	if err := enc.Encode(m); err != nil {
+		return ""
+	}
+
+	return string(b.Bytes())
 }

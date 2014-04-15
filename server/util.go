@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"github.com/ngaut/gearmand/common"
 	log "github.com/ngaut/logging"
+	"github.com/ngaut/stats"
 	"io"
 	"net"
 	"os"
 	"strconv"
+	"strings"
+	"syscall"
 	"time"
 )
 
@@ -32,6 +35,7 @@ var (
 )
 
 func init() {
+	ValidProtocolDef()
 	hn, err := os.Hostname()
 	if err != nil {
 		hn = os.Getenv("HOSTNAME")
@@ -41,9 +45,8 @@ func init() {
 		hn = "localhost"
 	}
 
-	workerNameStr := fmt.Sprintf("%s-%d", hn, os.Getpid())
-	//cache fmtstr
-	jobHandlePrefix = fmt.Sprintf("H:%s:", workerNameStr)
+	//cache prefix
+	jobHandlePrefix = fmt.Sprintf("H:%s:-%d-%d", hn, os.Getpid(), time.Now().Unix())
 	go func() {
 		for {
 			jidCh <- genJid()
@@ -118,6 +121,10 @@ func decodeArgs(cmd uint32, buf []byte) ([][]byte, bool) {
 
 func sendReply(out chan []byte, tp uint32, data [][]byte) {
 	out <- constructReply(tp, data)
+}
+
+func sendReplyResult(out chan []byte, data []byte) {
+	out <- data
 }
 
 func constructReply(tp uint32, data [][]byte) []byte {
@@ -229,7 +236,7 @@ func clearOutbox(outbox chan []byte) {
 	for {
 		select {
 		case b, ok := <-outbox:
-			if !ok { //channel is empty
+			if !ok { //channel is closed
 				return
 			}
 
@@ -281,4 +288,57 @@ func ValidProtocolDef() {
 
 func createResCh() chan interface{} {
 	return make(chan interface{}, 1)
+}
+
+func RegisterCoreDump(path string) {
+	if crashFile, err := os.OpenFile(fmt.Sprintf("%v--crash.log", path), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664); err == nil {
+		crashFile.WriteString(fmt.Sprintf("pid %d Opened crashfile at %v\n", os.Getpid(), time.Now()))
+		os.Stderr = crashFile
+		syscall.Dup2(int(crashFile.Fd()), 2)
+	} else {
+		println(err.Error())
+	}
+}
+
+func PublishCmdline() {
+	var cmdline string
+	for _, arg := range os.Args {
+		cmdline += arg
+		cmdline += " "
+	}
+	stats.Publish("cmdline", cmdline)
+}
+
+func LocalIP() (net.IP, error) {
+	tt, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range tt {
+		if strings.Contains(t.Name, "lo") { //exclude loop back address
+			continue
+		}
+
+		aa, err := t.Addrs()
+		if err != nil {
+			return nil, err
+		}
+		for _, a := range aa {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			if ipnet.IP.IsLoopback() {
+				continue
+			}
+
+			v4 := ipnet.IP.To4()
+			if v4 == nil || v4[0] == 127 { // loopback address
+				continue
+			}
+			//log.Println(a)
+			return v4, nil
+		}
+	}
+	return nil, errors.New("cannot find local IP address")
 }
