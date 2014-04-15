@@ -1,8 +1,12 @@
 package common
 
+import (
+	"strconv"
+)
+
 func CmdDescription(cmd uint32) string {
 	if int(cmd) >= len(cmdTable) {
-		return "unknown command"
+		return "unknown command " + strconv.Itoa(int(cmd))
 	}
 
 	return cmdTable[cmd].str

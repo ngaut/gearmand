@@ -5,6 +5,7 @@ import (
 	"container/list"
 	. "github.com/ngaut/gearmand/common"
 	log "github.com/ngaut/logging"
+	"github.com/ngaut/stats"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -20,6 +21,7 @@ type Server struct {
 	jobs       map[string]*Job
 
 	startSessionId int64
+	opCounter      map[uint32]int64
 }
 
 func NewServer() *Server {
@@ -30,6 +32,7 @@ func NewServer() *Server {
 		worker:     make(map[int64]*Worker),
 		client:     make(map[int64]*Client),
 		jobs:       make(map[string]*Job),
+		opCounter:  make(map[uint32]int64),
 	}
 
 	//todo: load background jobs from storage
@@ -279,6 +282,10 @@ func (self *Server) handleWorkReport(e *event) {
 
 func (self *Server) handleProtoEvt(e *event) {
 	args := e.args
+	if e.tp != ctrlCloseSession {
+		self.opCounter[e.tp]++
+	}
+
 	switch e.tp {
 	case CAN_DO:
 		w := args.t0.(*Worker)
@@ -291,11 +298,10 @@ func (self *Server) handleProtoEvt(e *event) {
 		if jw, ok := self.funcWorker[funcName]; ok {
 			self.removeWorker(jw.workers, sessionId)
 		}
-		self.worker[sessionId].canDo[funcName] = false
+		delete(self.worker[sessionId].canDo, funcName)
 	case SET_CLIENT_ID:
 		w := args.t0.(*Worker)
 		w.workerId = args.t1.(string)
-		log.Debug(w.workerId)
 	case CAN_DO_TIMEOUT: //todo: fix timeout support, now just as CAN_DO
 		w := args.t0.(*Worker)
 		funcName := args.t1.(string)
@@ -334,7 +340,7 @@ func (self *Server) handleProtoEvt(e *event) {
 		}
 
 		w.status = wsSleep
-		log.Warningf("worker sessionId %d sleep", sessionId)
+		log.Debugf("worker sessionId %d sleep", sessionId)
 		//todo:check if there is any job for this worker
 		for k, _ := range w.canDo {
 			if self.wakeupWorker(k) {
@@ -371,8 +377,14 @@ func (self *Server) wakeupTravel() {
 	}
 }
 
+func (self *Server) showCounter() {
+	for k, v := range self.opCounter {
+		stats.PubInt64(CmdDescription(k), v)
+	}
+}
+
 func (self *Server) EvtLoop() {
-	tick := time.NewTicker(time.Second)
+	tick := time.NewTicker(3 * time.Second)
 	for {
 		select {
 		case e := <-self.protoEvtCh:
@@ -380,7 +392,7 @@ func (self *Server) EvtLoop() {
 		case e := <-self.ctrlEvtCh:
 			_ = e
 		case <-tick.C:
-
+			self.showCounter()
 		}
 	}
 }
@@ -434,7 +446,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			return
 		}
 
-		log.Debug("sessionId", sessionId, "tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
+		//log.Debug("sessionId", sessionId, "tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
 
 		switch tp {
 		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support
@@ -462,8 +474,8 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- e
 			job := (<-e.result).(*Job)
 			if job == nil {
-				log.Warning("no job")
-				outch <- constructReply(NO_JOB, nil)
+				log.Debug(sessionId, "no job")
+				sendReply(outch, NO_JOB, nil)
 				break
 			}
 
@@ -494,7 +506,6 @@ func (self *Server) handleConnection(conn net.Conn) {
 				int2bytes(resultArg.t4.(int))})
 		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 			WORK_FAIL, WORK_EXCEPTION:
-			//log.Debugf("%s", string(buf))
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: args},
 				fromSessionId: sessionId}
 		default:

@@ -48,3 +48,6 @@ wip
 	gearmand-1.1.12/benchmark$ ./blobslap_worker
 
 
+how to track stats:
+
+	http://localhost:6060/debug/stats
