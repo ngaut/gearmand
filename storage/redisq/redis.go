@@ -1,5 +1,4 @@
 //using key as queue
-//name of hset: gearmand-bg-queue
 
 package redisq
 
