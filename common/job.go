@@ -9,6 +9,8 @@ import (
 const (
 	PRIORITY_LOW  = 0
 	PRIORITY_HIGH = 1
+
+	JobPrefix = "H:"
 )
 
 type Job struct {

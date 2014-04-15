@@ -40,9 +40,8 @@ func NewServer(store storage.JobQueue) *Server {
 		client:     make(map[int64]*Client),
 		jobs:       make(map[string]*Job),
 		opCounter:  make(map[uint32]int64),
+		store:      store,
 	}
-
-	//todo: load background jobs from storage
 }
 
 func (self *Server) Start(addr string) {
@@ -54,6 +53,21 @@ func (self *Server) Start(addr string) {
 	go self.EvtLoop()
 
 	log.Debug("listening on", addr)
+
+	//load background jobs from storage
+	err = self.store.Init()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	jobs, err := self.store.GetJobs()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, j := range jobs {
+		self.doAddJob(j)
+	}
 
 	for {
 		conn, err := ln.Accept()
@@ -178,6 +192,9 @@ func (self *Server) checkAndRemoveJob(tp uint32, j *Job) {
 func (self *Server) removeJob(j *Job) {
 	delete(self.jobs, j.Handle)
 	delete(self.worker[j.ProcessBy].runningJobs, j.Handle)
+	if j.IsBackGround {
+		self.store.DoneJob(j)
+	}
 }
 
 func (self *Server) handleCtrlEvt(e *event) {
@@ -222,7 +239,8 @@ func (self *Server) handleSubmitJob(e *event) {
 	switch e.tp {
 	case SUBMIT_JOB_LOW_BG, SUBMIT_JOB_HIGH_BG:
 		j.IsBackGround = true
-		//todo: persistent job
+		// persistent job
+		self.store.AddJob(j)
 	}
 
 	switch e.tp {

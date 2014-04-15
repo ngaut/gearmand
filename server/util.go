@@ -46,7 +46,7 @@ func init() {
 	}
 
 	//cache prefix
-	jobHandlePrefix = fmt.Sprintf("H:%s:-%d-%d", hn, os.Getpid(), time.Now().Unix())
+	jobHandlePrefix = fmt.Sprintf("%s-%s:-%d-%d", common.JobPrefix, hn, os.Getpid(), time.Now().Unix())
 	go func() {
 		for {
 			jidCh <- genJid()
@@ -294,6 +294,7 @@ func RegisterCoreDump(path string) {
 	if crashFile, err := os.OpenFile(fmt.Sprintf("%v--crash.log", path), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664); err == nil {
 		crashFile.WriteString(fmt.Sprintf("pid %d Opened crashfile at %v\n", os.Getpid(), time.Now()))
 		os.Stderr = crashFile
+		//todo:windows do not have Dup2 function
 		syscall.Dup2(int(crashFile.Fd()), 2)
 	} else {
 		println(err.Error())
