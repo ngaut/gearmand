@@ -278,3 +278,7 @@ func ValidProtocolDef() {
 		panic("protocol define not match")
 	}
 }
+
+func createResCh() chan interface{} {
+	return make(chan interface{}, 1)
+}

@@ -83,8 +83,8 @@ func (self *Server) removeWorkerBySessionId(sessionId int64) {
 }
 
 func (self *Server) handleCanDo(funcName string, w *Worker) {
+	w.canDo[funcName] = true
 	jw := self.getJobWorkPair(funcName)
-
 	self.addWorker(jw.workers, w)
 	self.worker[w.SessionId] = w
 }
@@ -105,6 +105,7 @@ func (self *Server) addJob(j *Job) {
 }
 
 func (self *Server) doAddJob(j *Job) {
+	j.ProcessBy = 0
 	self.addJob(j)
 	self.jobs[j.Handle] = j
 	self.wakeupWorker(j.FuncName)
@@ -131,10 +132,10 @@ func (self *Server) popJob(sessionId int64) (j *Job) {
 	return
 }
 
-func (self *Server) wakeupWorker(funcName string) {
+func (self *Server) wakeupWorker(funcName string) bool {
 	wj, ok := self.funcWorker[funcName]
 	if !ok {
-		return
+		return false
 	}
 
 	for it := wj.workers.Front(); it != nil; it = it.Next() {
@@ -151,8 +152,10 @@ func (self *Server) wakeupWorker(funcName string) {
 			continue
 		}
 
-		return
+		return true
 	}
+
+	return false
 }
 
 func (self *Server) checkAndRemoveJob(tp uint32, j *Job) {
@@ -183,6 +186,7 @@ func (self *Server) handleCtrlEvt(e *event) {
 				if handle != j.Handle {
 					log.Fatal("handle not match %d-%d", handle, j.Handle)
 				}
+
 				self.doAddJob(j)
 			}
 		}
@@ -279,7 +283,6 @@ func (self *Server) handleProtoEvt(e *event) {
 	case CAN_DO:
 		w := args.t0.(*Worker)
 		funcName := args.t1.(string)
-		w.canDo[funcName] = true
 		self.handleCanDo(funcName, w)
 		self.worker[w.SessionId] = w
 	case CANT_DO:
@@ -296,7 +299,6 @@ func (self *Server) handleProtoEvt(e *event) {
 	case CAN_DO_TIMEOUT: //todo: fix timeout support, now just as CAN_DO
 		w := args.t0.(*Worker)
 		funcName := args.t1.(string)
-		w.canDo[funcName] = true
 		self.handleCanDo(funcName, w)
 		self.worker[w.SessionId] = w
 	case GRAB_JOB_UNIQ:
@@ -326,14 +328,19 @@ func (self *Server) handleProtoEvt(e *event) {
 		w, ok := self.worker[sessionId]
 		if !ok {
 			log.Warningf("unregister worker, sessionId %d", sessionId)
+			w = args.t1.(*Worker)
 			self.worker[w.SessionId] = w
 			break
 		}
 
 		w.status = wsSleep
 		log.Warningf("worker sessionId %d sleep", sessionId)
-		//todo:check if there is any job for this worker, so we don't need using ticker
-		//and it' more realtime
+		//todo:check if there is any job for this worker
+		for k, _ := range w.canDo {
+			if self.wakeupWorker(k) {
+				break
+			}
+		}
 	case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
 		self.handleSubmitJob(e)
 	case GET_STATUS:
@@ -373,7 +380,7 @@ func (self *Server) EvtLoop() {
 		case e := <-self.ctrlEvtCh:
 			_ = e
 		case <-tick.C:
-			self.wakeupTravel()
+
 		}
 	}
 }
@@ -399,11 +406,13 @@ func (self *Server) handleConnection(conn net.Conn) {
 	var c *Client
 	outch := make(chan []byte, 200)
 	defer func() {
-		e := &event{tp: ctrlCloseSession, fromSessionId: sessionId,
-			result: make(chan interface{}, 1)}
-		self.protoEvtCh <- e
-		<-e.result
-		close(outch) //notify writer to quit
+		if w != nil || c != nil {
+			e := &event{tp: ctrlCloseSession, fromSessionId: sessionId,
+				result: createResCh()}
+			self.protoEvtCh <- e
+			<-e.result
+			close(outch) //notify writer to quit
+		}
 	}()
 
 	log.Debug("new sessionId", sessionId, "address:", conn.RemoteAddr())
@@ -444,8 +453,12 @@ func (self *Server) handleConnection(conn net.Conn) {
 			w = self.getWorker(w, sessionId, outch, conn)
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: w, t1: string(args[0])}}
 		case GRAB_JOB_UNIQ:
+			if w == nil {
+				log.Errorf("can't perform GRAB_JOB_UNIQ, need send CAN_DO first")
+				return
+			}
 			e := &event{tp: tp, fromSessionId: sessionId,
-				result: make(chan interface{}, 1)}
+				result: createResCh()}
 			self.protoEvtCh <- e
 			job := (<-e.result).(*Job)
 			if job == nil {
@@ -459,18 +472,19 @@ func (self *Server) handleConnection(conn net.Conn) {
 				[]byte(job.Handle), []byte(job.FuncName), []byte(job.Id), job.Data})
 		case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
 			if c == nil {
-				c = &Client{Session: Session{SessionId: sessionId, Outbox: outch, ConnectAt: time.Now()}}
+				c = &Client{Session: Session{SessionId: sessionId, Outbox: outch,
+					ConnectAt: time.Now()}}
 			}
 			e := &event{tp: tp,
 				args:   &Tuple{t0: c, t1: args[0], t2: args[1], t3: args[2]},
-				result: make(chan interface{}, 1),
+				result: createResCh(),
 			}
 			self.protoEvtCh <- e
 			handle := <-e.result
 			sendReply(outch, JOB_CREATED, [][]byte{[]byte(handle.(string))})
 		case GET_STATUS:
 			e := &event{tp: tp, args: &Tuple{t0: args[0]},
-				result: make(chan interface{}, 1)}
+				result: createResCh()}
 			self.protoEvtCh <- e
 
 			resultArg := (<-e.result).(*Tuple)
