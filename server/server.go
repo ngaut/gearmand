@@ -57,16 +57,19 @@ func (self *Server) Start(addr string) {
 	//load background jobs from storage
 	err = self.store.Init()
 	if err != nil {
-		log.Fatal(err)
-	}
+		log.Error(err)
+		self.store = nil
+	} else {
+		jobs, err := self.store.GetJobs()
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	jobs, err := self.store.GetJobs()
-	if err != nil {
-		log.Fatal(err)
-	}
+		log.Debugf("%+v", jobs)
 
-	for _, j := range jobs {
-		self.doAddJob(j)
+		for _, j := range jobs {
+			self.doAddJob(j)
+		}
 	}
 
 	for {
@@ -163,6 +166,10 @@ func (self *Server) wakeupWorker(funcName string) bool {
 		return false
 	}
 
+	if wj.jobs.Len() == 0 {
+		return false
+	}
+
 	for it := wj.workers.Front(); it != nil; it = it.Next() {
 		w := it.Value.(*Worker)
 		if w.status != wsSleep {
@@ -193,7 +200,10 @@ func (self *Server) removeJob(j *Job) {
 	delete(self.jobs, j.Handle)
 	delete(self.worker[j.ProcessBy].runningJobs, j.Handle)
 	if j.IsBackGround {
-		self.store.DoneJob(j)
+		log.Debugf("%done job: +v", j)
+		if self.store != nil {
+			self.store.DoneJob(j)
+		}
 	}
 }
 
@@ -240,7 +250,10 @@ func (self *Server) handleSubmitJob(e *event) {
 	case SUBMIT_JOB_LOW_BG, SUBMIT_JOB_HIGH_BG:
 		j.IsBackGround = true
 		// persistent job
-		self.store.AddJob(j)
+		log.Debugf("add job %+v", j)
+		if self.store != nil {
+			self.store.AddJob(j)
+		}
 	}
 
 	switch e.tp {

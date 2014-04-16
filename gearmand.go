@@ -20,7 +20,7 @@ func main() {
 	flag.Parse()
 	gearmand.PublishCmdline()
 	gearmand.RegisterCoreDump(*path)
-	log.SetLevelByString("warning")
+	log.SetLevelByString("debug")
 	log.SetHighlighting(false)
 	runtime.GOMAXPROCS(1)
 	go gearmand.NewServer(&redisq.RedisQ{}).Start(*addr)

@@ -46,7 +46,7 @@ func init() {
 	}
 
 	//cache prefix
-	jobHandlePrefix = fmt.Sprintf("%s-%s:-%d-%d", common.JobPrefix, hn, os.Getpid(), time.Now().Unix())
+	jobHandlePrefix = fmt.Sprintf("%s-%s:-%d-%d-", common.JobPrefix, hn, os.Getpid(), time.Now().Unix())
 	go func() {
 		for {
 			jidCh <- genJid()
