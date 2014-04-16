@@ -34,13 +34,16 @@ func (self *RedisQ) AddJob(j *Job) error {
 	if err != nil {
 		return err
 	}
-	r := self.client.Set(j.Handle, string(buf))
-	return r.Err()
+
+	_, err = self.client.Set(j.Handle, string(buf)).Result()
+
+	return err
 }
 
 func (self *RedisQ) DoneJob(j *Job) error {
-	r := self.client.Del(j.Handle)
-	return r.Err()
+	_, err := self.client.Del(j.Handle).Result()
+
+	return err
 }
 
 func (self *RedisQ) GetJobs() ([]*Job, error) {
@@ -49,7 +52,7 @@ func (self *RedisQ) GetJobs() ([]*Job, error) {
 		return nil, err
 	}
 
-	if len(strs) == 0 {
+	if len(strs) == 0 { //no jobs on redis
 		return nil, nil
 	}
 

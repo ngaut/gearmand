@@ -21,7 +21,7 @@ func main() {
 	gearmand.PublishCmdline()
 	gearmand.RegisterCoreDump(*path)
 	log.SetLevelByString("debug")
-	log.SetHighlighting(false)
+	//log.SetHighlighting(false)
 	runtime.GOMAXPROCS(1)
 	go gearmand.NewServer(&redisq.RedisQ{}).Start(*addr)
 	log.Error(http.ListenAndServe(":6060", nil))

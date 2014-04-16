@@ -44,6 +44,19 @@ func NewServer(store storage.JobQueue) *Server {
 	}
 }
 
+func (self *Server) getAllJobs() {
+	jobs, err := self.store.GetJobs()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Debugf("%+v", jobs)
+
+	for _, j := range jobs {
+		self.doAddJob(j)
+	}
+}
+
 func (self *Server) Start(addr string) {
 	ln, err := net.Listen("tcp", ":4730")
 	if err != nil {
@@ -60,16 +73,7 @@ func (self *Server) Start(addr string) {
 		log.Error(err)
 		self.store = nil
 	} else {
-		jobs, err := self.store.GetJobs()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		log.Debugf("%+v", jobs)
-
-		for _, j := range jobs {
-			self.doAddJob(j)
-		}
+		self.getAllJobs()
 	}
 
 	for {
@@ -200,9 +204,11 @@ func (self *Server) removeJob(j *Job) {
 	delete(self.jobs, j.Handle)
 	delete(self.worker[j.ProcessBy].runningJobs, j.Handle)
 	if j.IsBackGround {
-		log.Debugf("%done job: +v", j)
+		log.Debugf("done job: %+v", j)
 		if self.store != nil {
-			self.store.DoneJob(j)
+			if err := self.store.DoneJob(j); err != nil {
+				log.Warning(err)
+			}
 		}
 	}
 }
@@ -252,7 +258,9 @@ func (self *Server) handleSubmitJob(e *event) {
 		// persistent job
 		log.Debugf("add job %+v", j)
 		if self.store != nil {
-			self.store.AddJob(j)
+			if err := self.store.AddJob(j); err != nil {
+				log.Warning(err)
+			}
 		}
 	}
 
@@ -291,7 +299,7 @@ func (self *Server) handleWorkReport(e *event) {
 
 	self.checkAndRemoveJob(e.tp, j)
 
-	//If BackGround, the client is not updated with status or notified when the job has completed (it is detached)
+	//the client is not updated with status or notified when the job has completed (it is detached)
 	if j.IsBackGround {
 		return
 	}
@@ -314,8 +322,6 @@ func (self *Server) handleWorkReport(e *event) {
 	}
 
 	reply := constructReply(e.tp, slice)
-	//_ = reply
-	//_ = c
 	if !c.TrySend(reply) { //it's kind of slow
 		log.Warningf("client is full %+v", c)
 	}
@@ -515,7 +521,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- e
 			job := (<-e.result).(*Job)
 			if job == nil {
-				log.Debug(sessionId, "no job")
+				log.Debug("sessionId", sessionId, "no job")
 				sendReplyResult(outch, nojobReply)
 				break
 			}
@@ -542,9 +548,9 @@ func (self *Server) handleConnection(conn net.Conn) {
 
 			resp := (<-e.result).(*Tuple)
 			sendReply(outch, STATUS_RES, [][]byte{resp.t0.([]byte),
-				bool2bytes(resp.t1.(bool)), bool2bytes(resp.t2.(bool)),
-				int2bytes(resp.t3.(int)),
-				int2bytes(resp.t4.(int))})
+				bool2bytes(resp.t1), bool2bytes(resp.t2),
+				int2bytes(resp.t3),
+				int2bytes(resp.t4)})
 		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 			WORK_FAIL, WORK_EXCEPTION:
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: args},

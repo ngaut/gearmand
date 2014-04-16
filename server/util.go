@@ -175,16 +175,16 @@ func bytes2str(o interface{}) string {
 	return string(o.([]byte))
 }
 
-func bool2bytes(b bool) []byte {
-	if b {
+func bool2bytes(b interface{}) []byte {
+	if b.(bool) {
 		return []byte{'1'}
 	}
 
 	return []byte{'0'}
 }
 
-func int2bytes(n int) []byte {
-	return []byte(strconv.Itoa(n))
+func int2bytes(n interface{}) []byte {
+	return []byte(strconv.Itoa(n.(int)))
 }
 
 func ReadMessage(r io.Reader) (uint32, []byte, error) {
