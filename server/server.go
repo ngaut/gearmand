@@ -318,7 +318,7 @@ func (self *Server) handleWorkReport(e *event) {
 	//let worker send status to this co-worker
 	c, ok := self.client[j.CreateBy]
 	if !ok {
-		log.Warning(j.Handle, "sessionId", j.CreateBy, "missing")
+		log.Debug(j.Handle, "sessionId", j.CreateBy, "missing")
 		return
 	}
 
@@ -441,6 +441,9 @@ func (self *Server) EvtLoop() {
 			_ = e
 		case <-tick.C:
 			self.pubCounter()
+			stats.PubInt("len(protoEvtCh)", len(self.protoEvtCh))
+			stats.PubInt("worker count", len(self.worker))
+			stats.PubInt("job queue length", len(self.jobs))
 		}
 	}
 }
