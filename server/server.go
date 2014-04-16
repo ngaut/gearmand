@@ -444,6 +444,8 @@ func (self *Server) EvtLoop() {
 			stats.PubInt("len(protoEvtCh)", len(self.protoEvtCh))
 			stats.PubInt("worker count", len(self.worker))
 			stats.PubInt("job queue length", len(self.jobs))
+			stats.PubInt("queue count", len(self.funcWorker))
+			stats.PubInt("client count", len(self.client))
 		}
 	}
 }
