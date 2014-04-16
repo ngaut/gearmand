@@ -45,3 +45,15 @@ then choose client librarys form
 how to track stats:
 
 	http://localhost:6060/debug/stats
+	
+	
+TODO:
+
+	worker timeout 
+	queue max length limit
+	mysql support
+	more tests
+	rest api
+	web monitor
+	priority
+	write design documents, data structs
