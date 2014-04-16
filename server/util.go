@@ -35,7 +35,7 @@ var (
 )
 
 func init() {
-	ValidProtocolDef()
+	validProtocolDef()
 	hn, err := os.Hostname()
 	if err != nil {
 		hn = os.Getenv("HOSTNAME")
@@ -280,7 +280,7 @@ func readUint32(r io.Reader) (uint32, error) {
 	return value, err
 }
 
-func ValidProtocolDef() {
+func validProtocolDef() {
 	if common.CAN_DO != 1 || common.SUBMIT_JOB_EPOCH != 36 { //protocol check
 		panic("protocol define not match")
 	}

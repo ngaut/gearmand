@@ -53,6 +53,8 @@ func (self *Server) getAllJobs() {
 	log.Debugf("%+v", jobs)
 
 	for _, j := range jobs {
+		j.ProcessBy = 0 //no body handle it now
+		j.CreateBy = 0  //clear
 		self.doAddJob(j)
 	}
 }
@@ -78,8 +80,7 @@ func (self *Server) Start(addr string) {
 
 	for {
 		conn, err := ln.Accept()
-		if err != nil {
-			// handle error
+		if err != nil { // handle error
 			continue
 		}
 		go self.handleConnection(conn)
@@ -204,7 +205,7 @@ func (self *Server) removeJob(j *Job) {
 	delete(self.jobs, j.Handle)
 	delete(self.worker[j.ProcessBy].runningJobs, j.Handle)
 	if j.IsBackGround {
-		log.Debugf("done job: %+v", j)
+		log.Debugf("done job: %v", j.Handle)
 		if self.store != nil {
 			if err := self.store.DoneJob(j); err != nil {
 				log.Warning(err)
