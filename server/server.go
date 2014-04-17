@@ -271,8 +271,8 @@ func (self *Server) handleSubmitJob(e *event) {
 	}
 
 	//log.Debugf("%v, job handle %v, %s", CmdDescription(e.tp), j.Handle, string(j.Data))
-	self.doAddJob(j)
 	e.result <- j.Handle
+	self.doAddJob(j)
 }
 
 func (self *Server) handleWorkReport(e *event) {
@@ -485,6 +485,9 @@ func (self *Server) handleConnection(conn net.Conn) {
 	go writer(conn, outch)
 
 	r := bufio.NewReaderSize(conn, 256*1024)
+	//todo:1. reuse event's result channel, create less garbage.
+	//2. heavily rely on goroutine switch, send reply in EventLoop can make it faster, but logic is not that clean
+	//so i am not going to change it right now, maybe never
 
 	for {
 		tp, buf, err := ReadMessage(r)
