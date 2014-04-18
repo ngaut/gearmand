@@ -33,6 +33,10 @@ how to start gearmand?
 
 	./gearmand --addr="0.0.0.0:4730"
 	
+how to using redis as storage?
+	
+	./gearmand --addr="0.0.0.0:4730" --redis="localhost:6379"
+	
 then choose client librarys form
 
 	http://gearman.org/download/
@@ -41,3 +45,15 @@ then choose client librarys form
 how to track stats:
 
 	http://localhost:6060/debug/stats
+	
+	
+TODO:
+
+	worker timeout 
+	queue max length limit
+	mysql support
+	more tests
+	rest api
+	web monitor
+	priority
+	write design documents, data structs

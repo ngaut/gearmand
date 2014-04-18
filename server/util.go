@@ -35,7 +35,7 @@ var (
 )
 
 func init() {
-	ValidProtocolDef()
+	validProtocolDef()
 	hn, err := os.Hostname()
 	if err != nil {
 		hn = os.Getenv("HOSTNAME")
@@ -46,7 +46,7 @@ func init() {
 	}
 
 	//cache prefix
-	jobHandlePrefix = fmt.Sprintf("%s-%s:-%d-%d", common.JobPrefix, hn, os.Getpid(), time.Now().Unix())
+	jobHandlePrefix = fmt.Sprintf("%s-%s:-%d-%d-", common.JobPrefix, hn, os.Getpid(), time.Now().Unix())
 	go func() {
 		for {
 			jidCh <- genJid()
@@ -175,16 +175,16 @@ func bytes2str(o interface{}) string {
 	return string(o.([]byte))
 }
 
-func bool2bytes(b bool) []byte {
-	if b {
+func bool2bytes(b interface{}) []byte {
+	if b.(bool) {
 		return []byte{'1'}
 	}
 
 	return []byte{'0'}
 }
 
-func int2bytes(n int) []byte {
-	return []byte(strconv.Itoa(n))
+func int2bytes(n interface{}) []byte {
+	return []byte(strconv.Itoa(n.(int)))
 }
 
 func ReadMessage(r io.Reader) (uint32, []byte, error) {
@@ -280,7 +280,7 @@ func readUint32(r io.Reader) (uint32, error) {
 	return value, err
 }
 
-func ValidProtocolDef() {
+func validProtocolDef() {
 	if common.CAN_DO != 1 || common.SUBMIT_JOB_EPOCH != 36 { //protocol check
 		panic("protocol define not match")
 	}

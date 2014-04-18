@@ -7,6 +7,7 @@ import (
 	//"github.com/ngaut/gearmand/storage"
 	"encoding/json"
 	"flag"
+	log "github.com/ngaut/logging"
 	redis "github.com/vmihailenco/redis/v2"
 )
 
@@ -15,6 +16,7 @@ type RedisQ struct {
 }
 
 func (self *RedisQ) Init() error {
+	log.Debug("init redis queue")
 	addr := flag.Lookup("redis").Value.(flag.Getter).Get().(string)
 	self.client = redis.NewTCPClient(&redis.Options{
 		Addr:     addr,
@@ -32,29 +34,38 @@ func (self *RedisQ) AddJob(j *Job) error {
 	if err != nil {
 		return err
 	}
-	r := self.client.Set(j.Handle, string(buf))
-	return r.Err()
+
+	_, err = self.client.Set(j.Handle, string(buf)).Result()
+
+	return err
 }
 
 func (self *RedisQ) DoneJob(j *Job) error {
-	r := self.client.Del(j.Handle)
-	return r.Err()
+	_, err := self.client.Del(j.Handle).Result()
+
+	return err
 }
 
 func (self *RedisQ) GetJobs() ([]*Job, error) {
-	strs, err := self.client.Keys(JobPrefix).Result()
-	if err != redis.Nil {
+	strs, err := self.client.Keys(JobPrefix + "*").Result()
+	if err != nil {
 		return nil, err
 	}
 
-	if len(strs) == 0 {
+	if len(strs) == 0 { //no jobs on redis
 		return nil, nil
 	}
 
-	jobs := make([]*Job, 0, len(strs))
-	for i, buf := range strs {
-		err := json.Unmarshal([]byte(buf), &jobs[i])
+	vals, err := self.client.MGet(strs...).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	jobs := make([]*Job, len(strs), len(strs))
+	for i, s := range vals {
+		err := json.Unmarshal([]byte(s.(string)), &jobs[i])
 		if err != nil {
+			log.Error(s)
 			return nil, err
 		}
 	}

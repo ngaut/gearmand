@@ -44,6 +44,21 @@ func NewServer(store storage.JobQueue) *Server {
 	}
 }
 
+func (self *Server) getAllJobs() {
+	jobs, err := self.store.GetJobs()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Debugf("%+v", jobs)
+
+	for _, j := range jobs {
+		j.ProcessBy = 0 //no body handle it now
+		j.CreateBy = 0  //clear
+		self.doAddJob(j)
+	}
+}
+
 func (self *Server) Start(addr string) {
 	ln, err := net.Listen("tcp", ":4730")
 	if err != nil {
@@ -57,22 +72,15 @@ func (self *Server) Start(addr string) {
 	//load background jobs from storage
 	err = self.store.Init()
 	if err != nil {
-		log.Fatal(err)
-	}
-
-	jobs, err := self.store.GetJobs()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, j := range jobs {
-		self.doAddJob(j)
+		log.Error(err)
+		self.store = nil
+	} else {
+		self.getAllJobs()
 	}
 
 	for {
 		conn, err := ln.Accept()
-		if err != nil {
-			// handle error
+		if err != nil { // handle error
 			continue
 		}
 		go self.handleConnection(conn)
@@ -163,6 +171,10 @@ func (self *Server) wakeupWorker(funcName string) bool {
 		return false
 	}
 
+	if wj.jobs.Len() == 0 {
+		return false
+	}
+
 	for it := wj.workers.Front(); it != nil; it = it.Next() {
 		w := it.Value.(*Worker)
 		if w.status != wsSleep {
@@ -171,7 +183,7 @@ func (self *Server) wakeupWorker(funcName string) bool {
 
 		log.Debug("wakeup sessionId", w.SessionId)
 
-		if !w.TrySend(wakeupReply) {
+		if !w.TrySend(wakeupReply) {	//todo: queue it maybe
 			log.Warningf("worker sessionId %d is full, cap %d", w.SessionId, cap(w.Outbox))
 			continue
 		}
@@ -193,7 +205,12 @@ func (self *Server) removeJob(j *Job) {
 	delete(self.jobs, j.Handle)
 	delete(self.worker[j.ProcessBy].runningJobs, j.Handle)
 	if j.IsBackGround {
-		self.store.DoneJob(j)
+		log.Debugf("done job: %v", j.Handle)
+		if self.store != nil {
+			if err := self.store.DoneJob(j); err != nil {
+				log.Warning(err)
+			}
+		}
 	}
 }
 
@@ -240,7 +257,12 @@ func (self *Server) handleSubmitJob(e *event) {
 	case SUBMIT_JOB_LOW_BG, SUBMIT_JOB_HIGH_BG:
 		j.IsBackGround = true
 		// persistent job
-		self.store.AddJob(j)
+		log.Debugf("add job %+v", j)
+		if self.store != nil {
+			if err := self.store.AddJob(j); err != nil {
+				log.Warning(err)
+			}
+		}
 	}
 
 	switch e.tp {
@@ -249,8 +271,8 @@ func (self *Server) handleSubmitJob(e *event) {
 	}
 
 	//log.Debugf("%v, job handle %v, %s", CmdDescription(e.tp), j.Handle, string(j.Data))
-	self.doAddJob(j)
 	e.result <- j.Handle
+	self.doAddJob(j)
 }
 
 func (self *Server) handleWorkReport(e *event) {
@@ -278,7 +300,7 @@ func (self *Server) handleWorkReport(e *event) {
 
 	self.checkAndRemoveJob(e.tp, j)
 
-	//If BackGround, the client is not updated with status or notified when the job has completed (it is detached)
+	//the client is not updated with status or notified when the job has completed (it is detached)
 	if j.IsBackGround {
 		return
 	}
@@ -296,13 +318,11 @@ func (self *Server) handleWorkReport(e *event) {
 	//let worker send status to this co-worker
 	c, ok := self.client[j.CreateBy]
 	if !ok {
-		log.Warning(j.Handle, "sessionId", j.CreateBy, "missing")
+		log.Debug(j.Handle, "sessionId", j.CreateBy, "missing")
 		return
 	}
 
 	reply := constructReply(e.tp, slice)
-	//_ = reply
-	//_ = c
 	if !c.TrySend(reply) { //it's kind of slow
 		log.Warningf("client is full %+v", c)
 	}
@@ -421,6 +441,11 @@ func (self *Server) EvtLoop() {
 			_ = e
 		case <-tick.C:
 			self.pubCounter()
+			stats.PubInt("len(protoEvtCh)", len(self.protoEvtCh))
+			stats.PubInt("worker count", len(self.worker))
+			stats.PubInt("job queue length", len(self.jobs))
+			stats.PubInt("queue count", len(self.funcWorker))
+			stats.PubInt("client count", len(self.client))
 		}
 	}
 }
@@ -460,6 +485,9 @@ func (self *Server) handleConnection(conn net.Conn) {
 	go writer(conn, outch)
 
 	r := bufio.NewReaderSize(conn, 256*1024)
+	//todo:1. reuse event's result channel, create less garbage.
+	//2. heavily rely on goroutine switch, send reply in EventLoop can make it faster, but logic is not that clean
+	//so i am not going to change it right now, maybe never
 
 	for {
 		tp, buf, err := ReadMessage(r)
@@ -502,7 +530,7 @@ func (self *Server) handleConnection(conn net.Conn) {
 			self.protoEvtCh <- e
 			job := (<-e.result).(*Job)
 			if job == nil {
-				log.Debug(sessionId, "no job")
+				log.Debug("sessionId", sessionId, "no job")
 				sendReplyResult(outch, nojobReply)
 				break
 			}
@@ -529,9 +557,9 @@ func (self *Server) handleConnection(conn net.Conn) {
 
 			resp := (<-e.result).(*Tuple)
 			sendReply(outch, STATUS_RES, [][]byte{resp.t0.([]byte),
-				bool2bytes(resp.t1.(bool)), bool2bytes(resp.t2.(bool)),
-				int2bytes(resp.t3.(int)),
-				int2bytes(resp.t4.(int))})
+				bool2bytes(resp.t1), bool2bytes(resp.t2),
+				int2bytes(resp.t3),
+				int2bytes(resp.t4)})
 		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 			WORK_FAIL, WORK_EXCEPTION:
 			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: args},
