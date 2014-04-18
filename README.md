@@ -11,22 +11,16 @@ wip
 
 	some benchmark results(GOMAXPROCS=2):
 	...
-	[Current:   6994 jobs/s, Total:   4186 jobs/s]
-	[Current:   2840 jobs/s, Total:   4186 jobs/s]
-	[Current:    450 jobs/s, Total:   4184 jobs/s]
+	[Total:   4186 jobs/s]
 	
 	some benchmark results(GOMAXPROCS=1):
 	...
-	[Current:   8031 jobs/s, Total:   4662 jobs/s]
-	[Current:   2478 jobs/s, Total:   4656 jobs/s]
-	[Current:   7725 jobs/s, Total:   4662 jobs/s]
+	[4656 jobs/s]
 
 
 	original c version:
 	...
-	[Current:   8896 jobs/s, Total:   4764 jobs/s]
-	[Current:   2976 jobs/s, Total:   4728 jobs/s]
-	[Current:  19970 jobs/s, Total:   4848 jobs/s]
+	[5002 jobs/s]
 	
 	
 	benchmark tools:
@@ -50,6 +44,22 @@ how to track stats:
 
 	http://localhost:6060/debug/stats
 	
+how to list workers by "cando" ?
+
+	http://localhost:6060/worker/function
+	
+how to list all workers ?
+
+	http://localhost:6060/worker
+
+how to query job status ?
+
+	http://localhost:6060/job/jobhandle
+	
+how to list all jobs ?
+
+	http://localhost:6060/job
+		
 	
 TODO:
 
