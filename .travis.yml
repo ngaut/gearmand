@@ -7,3 +7,4 @@ go:
 install:
   - go get github.com/ngaut/logging
   - go get github.com/vmihailenco/redis/v2
+  - go get github.com/ngaut/stats
