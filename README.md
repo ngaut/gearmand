@@ -3,6 +3,9 @@ gearmand
 
 golang gearman-job-server clone
 
+
+[![Build Status](https://travis-ci.org/ngaut/gearmand.svg?branch=master)](https://travis-ci.org/ngaut/gearmand)
+
 wip
 
 	some benchmark results(GOMAXPROCS=2):
