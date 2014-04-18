@@ -14,7 +14,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
+	//"syscall"
 	"time"
 )
 
@@ -24,7 +24,9 @@ var (
 )
 
 const (
-	ctrlCloseSession = 1000
+	ctrlCloseSession = 1000 + iota
+	ctrlGetJob
+	ctrlGetWorker
 )
 
 var (
@@ -295,7 +297,7 @@ func RegisterCoreDump(path string) {
 		crashFile.WriteString(fmt.Sprintf("pid %d Opened crashfile at %v\n", os.Getpid(), time.Now()))
 		os.Stderr = crashFile
 		//todo:windows do not have Dup2 function
-		syscall.Dup2(int(crashFile.Fd()), 2)
+		//syscall.Dup2(int(crashFile.Fd()), 2)
 	} else {
 		println(err.Error())
 	}

@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"container/list"
+	"encoding/json"
 	. "github.com/ngaut/gearmand/common"
 	"github.com/ngaut/gearmand/storage"
 	log "github.com/ngaut/logging"
@@ -68,6 +69,8 @@ func (self *Server) Start(addr string) {
 	go self.EvtLoop()
 
 	log.Debug("listening on", addr)
+
+	go registerWebHandler(self)
 
 	//load background jobs from storage
 	err = self.store.Init()
@@ -183,7 +186,7 @@ func (self *Server) wakeupWorker(funcName string) bool {
 
 		log.Debug("wakeup sessionId", w.SessionId)
 
-		if !w.TrySend(wakeupReply) {	//todo: queue it maybe
+		if !w.TrySend(wakeupReply) { //todo: queue it maybe
 			log.Warningf("worker sessionId %d is full, cap %d", w.SessionId, cap(w.Outbox))
 			continue
 		}
@@ -214,31 +217,79 @@ func (self *Server) removeJob(j *Job) {
 	}
 }
 
+func (self *Server) handleCloseSession(e *event) {
+	sessionId := e.fromSessionId
+	if w, ok := self.worker[sessionId]; ok {
+		if sessionId != w.SessionId {
+			log.Fatalf("sessionId not match %d-%d, bug found", sessionId, w.SessionId)
+		}
+		self.removeWorkerBySessionId(w.SessionId)
+
+		//reschedule these jobs, so other workers can handle it
+		for handle, j := range w.runningJobs {
+			if handle != j.Handle {
+				log.Fatal("handle not match %d-%d", handle, j.Handle)
+			}
+			self.doAddJob(j)
+		}
+	}
+	if c, ok := self.client[sessionId]; ok {
+		log.Debug("removeClient sessionId", sessionId)
+		delete(self.client, c.SessionId)
+	}
+	e.result <- true //notify close finish
+}
+
 func (self *Server) handleCtrlEvt(e *event) {
 	//args := e.args
 	switch e.tp {
 	case ctrlCloseSession:
-		sessionId := e.fromSessionId
-		if w, ok := self.worker[sessionId]; ok {
-			if sessionId != w.SessionId {
-				log.Fatalf("sessionId not match %d-%d, bug found", sessionId, w.SessionId)
+		self.handleCloseSession(e)
+	case ctrlGetJob:
+		log.Debug("get worker", e.jobHandle)
+		if len(e.jobHandle) == 0 {
+			s, err := json.Marshal(self.jobs)
+			if err != nil {
+				log.Error(err)
+				return
 			}
-			self.removeWorkerBySessionId(w.SessionId)
+			e.result <- string(s)
+			return
+		}
 
-			//reschedule these jobs, so other workers can handle it
-			for handle, j := range w.runningJobs {
-				if handle != j.Handle {
-					log.Fatal("handle not match %d-%d", handle, j.Handle)
-				}
-				self.doAddJob(j)
+		if job, ok := self.jobs[e.jobHandle]; ok {
+			e.result <- job.String()
+			return
+		}
+		e.result <- "{}"
+	case ctrlGetWorker:
+		cando := e.args.t0.(string)
+		log.Debug("get worker", cando)
+		if len(cando) == 0 {
+			s, err := json.Marshal(self.jobs)
+			if err != nil {
+				log.Error(err)
+				return
 			}
+			e.result <- string(s)
+			return
 		}
-		if c, ok := self.client[sessionId]; ok {
-			log.Debug("removeClient sessionId", sessionId)
-			delete(self.client, c.SessionId)
-		}
-		e.result <- true //notify close finish
 
+		if jw, ok := self.funcWorker[cando]; ok {
+			workers := make([]*Worker, 0, jw.workers.Len())
+			for it := jw.workers.Front(); it.Next() != nil; it = it.Next() {
+				workers = append(workers, it.Value.(*Worker))
+			}
+			s, err := json.Marshal(workers)
+			if err != nil {
+				log.Error(err)
+				return
+			}
+			e.result <- s
+			return
+		}
+
+		e.result <- "{}"
 	default:
 		log.Warningf("%s, %d", CmdDescription(e.tp), e.tp)
 	}
@@ -438,7 +489,7 @@ func (self *Server) EvtLoop() {
 		case e := <-self.protoEvtCh:
 			self.handleProtoEvt(e)
 		case e := <-self.ctrlEvtCh:
-			_ = e
+			self.handleCtrlEvt(e)
 		case <-tick.C:
 			self.pubCounter()
 			stats.PubInt("len(protoEvtCh)", len(self.protoEvtCh))

@@ -5,7 +5,6 @@ golang gearman-job-server clone
 
 
 [![Build Status](https://drone.io/github.com/ngaut/gearmand/status.png)](https://drone.io/github.com/ngaut/gearmand/latest)
-[![Build Status](https://travis-ci.org/ngaut/gearmand.svg?branch=master)](https://travis-ci.org/ngaut/gearmand)
 [![Coverage Status](https://coveralls.io/repos/ngaut/gearmand/badge.png?branch=master)](https://coveralls.io/r/ngaut/gearmand)
 
 wip

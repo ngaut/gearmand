@@ -5,8 +5,6 @@ import (
 	gearmand "github.com/ngaut/gearmand/server"
 	"github.com/ngaut/gearmand/storage/redisq"
 	log "github.com/ngaut/logging"
-	"net/http"
-	_ "net/http/pprof"
 	"runtime"
 )
 
@@ -23,6 +21,5 @@ func main() {
 	log.SetLevelByString("debug")
 	//log.SetHighlighting(false)
 	runtime.GOMAXPROCS(1)
-	go gearmand.NewServer(&redisq.RedisQ{}).Start(*addr)
-	log.Error(http.ListenAndServe(":6060", nil))
+	gearmand.NewServer(&redisq.RedisQ{}).Start(*addr)
 }
