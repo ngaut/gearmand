@@ -7,7 +7,6 @@ golang gearman-job-server clone
 [![Build Status](https://drone.io/github.com/ngaut/gearmand/status.png)](https://drone.io/github.com/ngaut/gearmand/latest)
 [![Coverage Status](https://coveralls.io/repos/ngaut/gearmand/badge.png?branch=master)](https://coveralls.io/r/ngaut/gearmand)
 
-wip
 
 	some benchmark results(GOMAXPROCS=2):
 	...
@@ -61,13 +60,28 @@ how to list all jobs ?
 	http://localhost:6060/job
 		
 	
-TODO:
+## TODO:
 
 	worker timeout 
 	queue max length limit
-	mysql support
 	more tests
 	rest api
 	web monitor
 	priority
 	write design documents, data structs
+	
+## License
+Go-MySQL-Driver is licensed under the [Mozilla Public License Version 2.0](https://raw.github.com/go-sql-driver/mysql/master/LICENSE)
+
+Mozilla summarizes the license scope as follows:
+> MPL: The copyleft applies to any files containing MPLed code.
+
+
+That means:
+  * You can **use** the **unchanged** source code both in private as also commercial
+  * You **needn't publish** the source code of your library as long the files licensed under the MPL 2.0 are **unchanged**
+  * You **must publish** the source code of any **changed files** licensed under the MPL 2.0 under a) the MPL 2.0 itself or b) a compatible license (e.g. GPL 3.0 or Apache License 2.0)
+
+Please read the [MPL 2.0 FAQ](http://www.mozilla.org/MPL/2.0/FAQ.html) if you have further questions regarding the license.
+
+You can read the full terms here: [LICENSE](https://raw.github.com/go-sql-driver/mysql/master/LICENSE)	
