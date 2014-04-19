@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	saveJobSQL = "INSERT INTO message(Handle,Id,Priority,CreateAt,FuncName,IsBackGround,Data) VALUES(?,?,?,?,?,?,?)"
-	getJobsSQL = "SELECT * FROM message" //need to get all jobs
-	delJobSQL  = "DELETE FROM message WHERE Handle==?"
+	saveJobSQL = "INSERT INTO job(Handle,Id,Priority,CreateAt,FuncName,Data) VALUES(?,?,?,?,?,?)"
+	getJobsSQL = "SELECT * FROM job" //need to get all jobs
+	delJobSQL  = "DELETE FROM job WHERE Handle==?"
 )
 
 var (
@@ -37,7 +37,7 @@ func (self *MYSQLStorage) Init() error {
 
 // Save implements the Storage Save method.
 func (self *MYSQLStorage) AddJob(j *Job) error {
-	_, err := self.db.Exec(saveJobSQL, j.Handle, j.Id, j.Priority, j.CreateAt, j.FuncName, j.IsBackGround, j.Data)
+	_, err := self.db.Exec(saveJobSQL, j.Handle, j.Id, j.Priority, j.CreateAt.UTC(), j.FuncName, j.Data)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -60,7 +60,7 @@ func (self *MYSQLStorage) GetJobs() ([]*Job, error) {
 
 	for rows.Next() {
 		j := &Job{}
-		if err := rows.Scan(&j.Handle, &j.Id, &j.Priority, &j.CreateAt, &j.FuncName, &j.IsBackGround, &j.Data); err != nil {
+		if err := rows.Scan(&j.Handle, &j.Id, &j.Priority, &j.CreateAt, &j.FuncName, &j.Data); err != nil {
 			log.Error("rows.Scan() failed (%v)", err)
 			return nil, err
 		}
@@ -72,6 +72,7 @@ func (self *MYSQLStorage) GetJobs() ([]*Job, error) {
 
 // DelKey implements the Storage DelKey method.
 func (self *MYSQLStorage) DoneJob(j *Job) error {
+	log.Debug("DoneJob:", j.Handle)
 	_, err := self.db.Exec(delJobSQL, j.Handle)
 	if err != nil {
 		log.Error(err, j.Handle)

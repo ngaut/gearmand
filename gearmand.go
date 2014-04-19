@@ -14,7 +14,7 @@ var (
 	path  = flag.String("coredump", "./", "coredump file path")
 	redis = flag.String("redis", "localhost:6379", "redis address")
 	//todo: read from config files
-	mysqlSource = flag.String("mysql", "user:password@tcp(localhost:5555)/gogearmand", "mysql source")
+	mysqlSource = flag.String("mysql", "user:password@tcp(localhost:3306)/gogearmand?parseTime=true", "mysql source")
 	storage     = flag.String("storage", "mysql", "choose storage(redis or mysql)")
 )
 

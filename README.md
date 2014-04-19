@@ -32,7 +32,20 @@ how to start gearmand?
 	
 how to using redis as storage?
 	
-	./gearmand --addr="0.0.0.0:4730" --redis="localhost:6379"
+	./gearmand --storage=redis --addr="0.0.0.0:4730" --redis="localhost:6379"
+	
+## how to using mysql as storage?
+
+	1. create database
+		mysql> create database gogearmand;
+		Query OK, 1 row affected (0.00 sec)
+		
+		mysql> use gogearmand;
+	
+	2. create table
+		mysql> CREATE TABLE job(Handle varchar(128),Id varchar(128),Priority INT, CreateAt TIMESTAMP,FuncName varchar(128),Data varchar(16384)) ENGINE=InnoDB;
+	
+	./gearmand --storage=mysql --addr="0.0.0.0:4730" --source=user:password@tcp(localhost:3306)/gogearmand?parseTime=true
 	
 then choose client librarys form
 
