@@ -48,7 +48,8 @@ func NewServer(store storage.JobQueue) *Server {
 func (self *Server) getAllJobs() {
 	jobs, err := self.store.GetJobs()
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return
 	}
 
 	log.Debugf("%+v", jobs)
