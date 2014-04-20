@@ -267,26 +267,35 @@ func (self *Server) handleCtrlEvt(e *event) {
 		cando := e.args.t0.(string)
 		log.Debug("get worker", cando)
 		if len(cando) == 0 {
-			s, err := json.Marshal(self.jobs)
+			workers := make([]*Worker, 0, len(self.worker))
+			for _, v := range self.worker {
+				workers = append(workers, v)
+			}
+			s, err := json.Marshal(workers)
 			if err != nil {
 				log.Error(err)
+				e.result <- "{}"
 				return
 			}
 			e.result <- string(s)
 			return
 		}
 
+		log.Debugf("%+v", self.funcWorker)
+
 		if jw, ok := self.funcWorker[cando]; ok {
+			log.Debug(cando, jw.workers.Len())
 			workers := make([]*Worker, 0, jw.workers.Len())
-			for it := jw.workers.Front(); it.Next() != nil; it = it.Next() {
+			for it := jw.workers.Front(); it != nil; it = it.Next() {
 				workers = append(workers, it.Value.(*Worker))
 			}
 			s, err := json.Marshal(workers)
 			if err != nil {
 				log.Error(err)
+				e.result <- "{}"
 				return
 			}
-			e.result <- s
+			e.result <- string(s)
 			return
 		}
 

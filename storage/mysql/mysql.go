@@ -3,7 +3,7 @@ package mysql
 import (
 	"database/sql"
 	"errors"
-	//"github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"
 	. "github.com/ngaut/gearmand/common"
 	log "github.com/ngaut/logging"
 )

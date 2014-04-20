@@ -45,7 +45,7 @@ how to start gearmand?
 	2. create table
 		mysql> CREATE TABLE job(Handle varchar(128),Id varchar(128),Priority INT, CreateAt TIMESTAMP,FuncName varchar(128),Data varchar(16384)) ENGINE=InnoDB;
 	
-	./gearmand --storage=mysql --addr="0.0.0.0:4730" --source=user:password@tcp(localhost:3306)/gogearmand?parseTime=true
+	./gearmand --storage=mysql --addr="0.0.0.0:4730" --mysql=user:password@tcp(localhost:3306)/gogearmand?parseTime=true
 	
 then choose client librarys form
 
