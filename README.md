@@ -30,7 +30,7 @@ how to start gearmand?
 
 	./gearmand --addr="0.0.0.0:4730"
 	
-how to using redis as storage?
+## how to using redis as storage?
 	
 	./gearmand --storage=redis --addr="0.0.0.0:4730" --redis="localhost:6379"
 	
