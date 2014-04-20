@@ -8,6 +8,15 @@ golang gearman-job-server clone
 [![Coverage Status](https://coveralls.io/repos/ngaut/gearmand/badge.png?branch=master)](https://coveralls.io/r/ngaut/gearmand)
 
 
+## Why create a clone?
+
+	i like gearmand, but it lacks of 
+	monitor 
+	maintainability
+	rest api
+
+
+## benchmark
 	some benchmark results(GOMAXPROCS=2):
 	...
 	[Total:   4186 jobs/s]
@@ -26,15 +35,16 @@ golang gearman-job-server clone
 	gearmand-1.1.12/benchmark$ ./blobslap_client -c 1000 -n 10000
 	gearmand-1.1.12/benchmark$ ./blobslap_worker
 
-how to start gearmand?
+## tutorial
+	how to start gearmand?
 
 	./gearmand --addr="0.0.0.0:4730"
 	
-## how to using redis as storage?
+	how to using redis as storage?
 	
 	./gearmand --storage=redis --addr="0.0.0.0:4730" --redis="localhost:6379"
 	
-## how to using mysql as storage?
+	how to using mysql as storage?
 
 	1. create database
 		mysql> create database gogearmand;
