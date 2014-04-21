@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bufio"
 	"container/list"
 	"encoding/json"
 	. "github.com/ngaut/gearmand/common"
@@ -87,7 +86,9 @@ func (self *Server) Start(addr string) {
 		if err != nil { // handle error
 			continue
 		}
-		go self.handleConnection(conn)
+
+		session := &session{}
+		go session.handleConnection(self, conn)
 	}
 }
 
@@ -142,7 +143,7 @@ func (self *Server) add2JobWorkerQueue(j *Job) {
 }
 
 func (self *Server) doAddJob(j *Job) {
-	j.ProcessBy = 0
+	j.ProcessBy = 0 //nobody handle it right now
 	self.add2JobWorkerQueue(j)
 	self.jobs[j.Handle] = j
 	self.wakeupWorker(j.FuncName)
@@ -520,120 +521,4 @@ func (self *Server) EvtLoop() {
 
 func (self *Server) allocSessionId() int64 {
 	return atomic.AddInt64(&self.startSessionId, 1)
-}
-
-func (self *Server) getWorker(w *Worker, sessionId int64, outch chan []byte, conn net.Conn) *Worker {
-	if w != nil {
-		return w
-	}
-
-	return &Worker{
-		Conn: conn, status: wsSleep, Session: Session{SessionId: sessionId,
-			Outbox: outch, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
-		canDo: make(map[string]bool)}
-}
-
-func (self *Server) handleConnection(conn net.Conn) {
-	sessionId := self.allocSessionId()
-	var w *Worker
-	var c *Client
-	outch := make(chan []byte, 200)
-	defer func() {
-		if w != nil || c != nil {
-			e := &event{tp: ctrlCloseSession, fromSessionId: sessionId,
-				result: createResCh()}
-			self.protoEvtCh <- e
-			<-e.result
-			close(outch) //notify writer to quit
-		}
-	}()
-
-	log.Debug("new sessionId", sessionId, "address:", conn.RemoteAddr())
-
-	go writer(conn, outch)
-
-	r := bufio.NewReaderSize(conn, 256*1024)
-	//todo:1. reuse event's result channel, create less garbage.
-	//2. heavily rely on goroutine switch, send reply in EventLoop can make it faster, but logic is not that clean
-	//so i am not going to change it right now, maybe never
-
-	for {
-		tp, buf, err := ReadMessage(r)
-		if err != nil {
-			log.Debug(err, "sessionId", sessionId)
-			return
-		}
-
-		args, ok := decodeArgs(tp, buf)
-		if !ok {
-			log.Debug("tp:", CmdDescription(tp), "argc not match", "details:", string(buf))
-			return
-		}
-
-		//log.Debug("sessionId", sessionId, "tp:", CmdDescription(tp), "len(args):", len(args), "details:", string(buf))
-
-		switch tp {
-		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support
-			w = self.getWorker(w, sessionId, outch, conn)
-			self.protoEvtCh <- &event{tp: tp, args: &Tuple{
-				t0: w, t1: string(args[0])}}
-		case CANT_DO:
-			self.protoEvtCh <- &event{tp: tp, fromSessionId: sessionId,
-				args: &Tuple{t0: string(args[0])}}
-		case ECHO_REQ:
-			sendReply(outch, ECHO_RES, [][]byte{buf})
-		case PRE_SLEEP:
-			w = self.getWorker(w, sessionId, outch, conn)
-			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: w}, fromSessionId: sessionId}
-		case SET_CLIENT_ID:
-			w = self.getWorker(w, sessionId, outch, conn)
-			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: w, t1: string(args[0])}}
-		case GRAB_JOB_UNIQ:
-			if w == nil {
-				log.Errorf("can't perform GRAB_JOB_UNIQ, need send CAN_DO first")
-				return
-			}
-			e := &event{tp: tp, fromSessionId: sessionId,
-				result: createResCh()}
-			self.protoEvtCh <- e
-			job := (<-e.result).(*Job)
-			if job == nil {
-				log.Debug("sessionId", sessionId, "no job")
-				sendReplyResult(outch, nojobReply)
-				break
-			}
-
-			//log.Debugf("%+v", job)
-			sendReply(outch, JOB_ASSIGN_UNIQ, [][]byte{
-				[]byte(job.Handle), []byte(job.FuncName), []byte(job.Id), job.Data})
-		case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
-			if c == nil {
-				c = &Client{Session: Session{SessionId: sessionId, Outbox: outch,
-					ConnectAt: time.Now()}}
-			}
-			e := &event{tp: tp,
-				args:   &Tuple{t0: c, t1: args[0], t2: args[1], t3: args[2]},
-				result: createResCh(),
-			}
-			self.protoEvtCh <- e
-			handle := <-e.result
-			sendReply(outch, JOB_CREATED, [][]byte{[]byte(handle.(string))})
-		case GET_STATUS:
-			e := &event{tp: tp, args: &Tuple{t0: args[0]},
-				result: createResCh()}
-			self.protoEvtCh <- e
-
-			resp := (<-e.result).(*Tuple)
-			sendReply(outch, STATUS_RES, [][]byte{resp.t0.([]byte),
-				bool2bytes(resp.t1), bool2bytes(resp.t2),
-				int2bytes(resp.t3),
-				int2bytes(resp.t4)})
-		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
-			WORK_FAIL, WORK_EXCEPTION:
-			self.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: args},
-				fromSessionId: sessionId}
-		default:
-			log.Warningf("not support type %s", CmdDescription(tp))
-		}
-	}
 }

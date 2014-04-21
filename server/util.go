@@ -208,7 +208,7 @@ func readHeader(r io.Reader) (magic uint32, tp uint32, size uint32, err error) {
 	}
 
 	if magic != common.Req && magic != common.Res {
-		log.Debugf("magic not match %v", magic)
+		log.Debugf("magic not match %x", magic)
 		err = invalidMagic
 		return
 	}
