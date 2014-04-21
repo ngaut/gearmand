@@ -218,7 +218,7 @@ func (self *Server) removeJob(j *Job) {
 	}
 }
 
-func (self *Server) handleCloseSession(e *event) {
+func (self *Server) handleCloseSession(e *event) error {
 	sessionId := e.fromSessionId
 	if w, ok := self.worker[sessionId]; ok {
 		if sessionId != w.SessionId {
@@ -239,69 +239,82 @@ func (self *Server) handleCloseSession(e *event) {
 		delete(self.client, c.SessionId)
 	}
 	e.result <- true //notify close finish
+
+	return nil
+}
+
+func (self *Server) handleGetWorker(e *event) (err error) {
+	var buf []byte
+	defer func() {
+		e.result <- string(buf)
+	}()
+	cando := e.args.t0.(string)
+	log.Debug("get worker", cando)
+	if len(cando) == 0 {
+		workers := make([]*Worker, 0, len(self.worker))
+		for _, v := range self.worker {
+			workers = append(workers, v)
+		}
+		buf, err = json.Marshal(workers)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		return nil
+	}
+
+	log.Debugf("%+v", self.funcWorker)
+
+	if jw, ok := self.funcWorker[cando]; ok {
+		log.Debug(cando, jw.workers.Len())
+		workers := make([]*Worker, 0, jw.workers.Len())
+		for it := jw.workers.Front(); it != nil; it = it.Next() {
+			workers = append(workers, it.Value.(*Worker))
+		}
+		buf, err = json.Marshal(workers)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		return nil
+	}
+
+	return
+}
+
+func (self *Server) handleGetJob(e *event) (err error) {
+	log.Debug("get worker", e.jobHandle)
+	var buf []byte
+	defer func() {
+		e.result <- string(buf)
+	}()
+
+	if len(e.jobHandle) == 0 {
+		buf, err = json.Marshal(self.jobs)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		return nil
+	}
+
+	if job, ok := self.jobs[e.jobHandle]; ok {
+		buf = []byte(job.String())
+		return nil
+	}
+
+	return
 }
 
 func (self *Server) handleCtrlEvt(e *event) (err error) {
 	//args := e.args
 	switch e.tp {
 	case ctrlCloseSession:
-		self.handleCloseSession(e)
-		return nil
+		return self.handleCloseSession(e)
 	case ctrlGetJob:
-		log.Debug("get worker", e.jobHandle)
-		var buf []byte
-		defer func() {
-			e.result <- string(buf)
-		}()
-
-		if len(e.jobHandle) == 0 {
-			buf, err = json.Marshal(self.jobs)
-			if err != nil {
-				log.Error(err)
-				return err
-			}
-			return nil
-		}
-
-		if job, ok := self.jobs[e.jobHandle]; ok {
-			buf = []byte(job.String())
-			return nil
-		}
+		return self.handleGetJob(e)
 	case ctrlGetWorker:
-		var buf []byte
-		defer func() {
-			e.result <- string(buf)
-		}()
-		cando := e.args.t0.(string)
-		log.Debug("get worker", cando)
-		if len(cando) == 0 {
-			workers := make([]*Worker, 0, len(self.worker))
-			for _, v := range self.worker {
-				workers = append(workers, v)
-			}
-			buf, err = json.Marshal(workers)
-			if err != nil {
-				log.Error(err)
-				return err
-			}
-			return nil
-		}
-
-		log.Debugf("%+v", self.funcWorker)
-
-		if jw, ok := self.funcWorker[cando]; ok {
-			log.Debug(cando, jw.workers.Len())
-			workers := make([]*Worker, 0, jw.workers.Len())
-			for it := jw.workers.Front(); it != nil; it = it.Next() {
-				workers = append(workers, it.Value.(*Worker))
-			}
-			buf, err = json.Marshal(workers)
-			if err != nil {
-				log.Error(err)
-				return err
-			}
-			return nil
-		}
+		return self.handleGetWorker(e)
 	default:
 		log.Warningf("%s, %d", CmdDescription(e.tp), e.tp)
 	}
