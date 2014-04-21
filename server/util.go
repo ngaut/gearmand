@@ -195,6 +195,10 @@ func ReadMessage(r io.Reader) (uint32, []byte, error) {
 		return 0, nil, err
 	}
 
+	if size == 0 {
+		return tp, nil, nil
+	}
+
 	buf := make([]byte, size)
 	_, err = io.ReadFull(r, buf)
 
@@ -208,7 +212,7 @@ func readHeader(r io.Reader) (magic uint32, tp uint32, size uint32, err error) {
 	}
 
 	if magic != common.Req && magic != common.Res {
-		log.Debugf("magic not match %x", magic)
+		log.Debugf("magic not match 0x%x", magic)
 		err = invalidMagic
 		return
 	}

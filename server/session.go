@@ -83,7 +83,7 @@ func (self *session) handleConnection(s *Server, conn net.Conn) {
 			s.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: self.w, t1: string(args[0])}}
 		case GRAB_JOB_UNIQ:
 			if self.w == nil {
-				log.Errorf("can't perform GRAB_JOB_UNIQ, need send CAN_DO first")
+				log.Errorf("can't perform %s, need send CAN_DO first", CmdDescription(tp))
 				return
 			}
 			e := &event{tp: tp, fromSessionId: sessionId,
@@ -123,6 +123,10 @@ func (self *session) handleConnection(s *Server, conn net.Conn) {
 				int2bytes(resp.t4)})
 		case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 			WORK_FAIL, WORK_EXCEPTION:
+			if self.w == nil {
+				log.Errorf("can't perform %s, need send CAN_DO first", CmdDescription(tp))
+				return
+			}
 			s.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: args},
 				fromSessionId: sessionId}
 		default:
