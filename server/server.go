@@ -241,29 +241,37 @@ func (self *Server) handleCloseSession(e *event) {
 	e.result <- true //notify close finish
 }
 
-func (self *Server) handleCtrlEvt(e *event) {
+func (self *Server) handleCtrlEvt(e *event) (err error) {
 	//args := e.args
 	switch e.tp {
 	case ctrlCloseSession:
 		self.handleCloseSession(e)
+		return nil
 	case ctrlGetJob:
 		log.Debug("get worker", e.jobHandle)
+		var buf []byte
+		defer func() {
+			e.result <- string(buf)
+		}()
+
 		if len(e.jobHandle) == 0 {
-			s, err := json.Marshal(self.jobs)
+			buf, err = json.Marshal(self.jobs)
 			if err != nil {
 				log.Error(err)
-				return
+				return err
 			}
-			e.result <- string(s)
-			return
+			return nil
 		}
 
 		if job, ok := self.jobs[e.jobHandle]; ok {
-			e.result <- job.String()
-			return
+			buf = []byte(job.String())
+			return nil
 		}
-		e.result <- "{}"
 	case ctrlGetWorker:
+		var buf []byte
+		defer func() {
+			e.result <- string(buf)
+		}()
 		cando := e.args.t0.(string)
 		log.Debug("get worker", cando)
 		if len(cando) == 0 {
@@ -271,14 +279,12 @@ func (self *Server) handleCtrlEvt(e *event) {
 			for _, v := range self.worker {
 				workers = append(workers, v)
 			}
-			s, err := json.Marshal(workers)
+			buf, err = json.Marshal(workers)
 			if err != nil {
 				log.Error(err)
-				e.result <- "{}"
-				return
+				return err
 			}
-			e.result <- string(s)
-			return
+			return nil
 		}
 
 		log.Debugf("%+v", self.funcWorker)
@@ -289,20 +295,18 @@ func (self *Server) handleCtrlEvt(e *event) {
 			for it := jw.workers.Front(); it != nil; it = it.Next() {
 				workers = append(workers, it.Value.(*Worker))
 			}
-			s, err := json.Marshal(workers)
+			buf, err = json.Marshal(workers)
 			if err != nil {
 				log.Error(err)
-				e.result <- "{}"
-				return
+				return err
 			}
-			e.result <- string(s)
-			return
+			return nil
 		}
-
-		e.result <- "{}"
 	default:
 		log.Warningf("%s, %d", CmdDescription(e.tp), e.tp)
 	}
+
+	return nil
 }
 
 func (self *Server) handleSubmitJob(e *event) {
