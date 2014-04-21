@@ -136,14 +136,14 @@ func (self *Server) getJobWorkPair(funcName string) *jobworkermap {
 	return jw
 }
 
-func (self *Server) addJob(j *Job) {
+func (self *Server) add2JobWorkerQueue(j *Job) {
 	jw := self.getJobWorkPair(j.FuncName)
 	jw.jobs.PushBack(j)
 }
 
 func (self *Server) doAddJob(j *Job) {
 	j.ProcessBy = 0
-	self.addJob(j)
+	self.add2JobWorkerQueue(j)
 	self.jobs[j.Handle] = j
 	self.wakeupWorker(j.FuncName)
 }
@@ -171,11 +171,7 @@ func (self *Server) popJob(sessionId int64) (j *Job) {
 
 func (self *Server) wakeupWorker(funcName string) bool {
 	wj, ok := self.funcWorker[funcName]
-	if !ok {
-		return false
-	}
-
-	if wj.jobs.Len() == 0 {
+	if !ok || wj.jobs.Len() == 0 || wj.workers.Len() == 0 {
 		return false
 	}
 
@@ -331,22 +327,16 @@ func (self *Server) handleSubmitJob(e *event) {
 		Handle: allocJobId(), CreateAt: time.Now(), CreateBy: c.SessionId,
 		FuncName: funcName, Priority: PRIORITY_LOW}
 
-	switch e.tp {
-	case SUBMIT_JOB_LOW_BG, SUBMIT_JOB_HIGH_BG:
-		j.IsBackGround = true
-		// persistent job
-		log.Debugf("add job %+v", j)
-		if self.store != nil {
-			if err := self.store.AddJob(j); err != nil {
-				log.Warning(err)
-			}
+	j.IsBackGround = isBackGround(e.tp)
+	// persistent job
+	log.Debugf("add job %+v", j)
+	if self.store != nil {
+		if err := self.store.AddJob(j); err != nil {
+			log.Warning(err)
 		}
 	}
 
-	switch e.tp {
-	case SUBMIT_JOB_HIGH, SUBMIT_JOB_HIGH_BG:
-		j.Priority = PRIORITY_HIGH
-	}
+	j.Priority = cmd2Priority(e.tp)
 
 	//log.Debugf("%v, job handle %v, %s", CmdDescription(e.tp), j.Handle, string(j.Data))
 	e.result <- j.Handle
@@ -469,7 +459,7 @@ func (self *Server) handleProtoEvt(e *event) {
 
 		w.status = wsSleep
 		log.Debugf("worker sessionId %d sleep", sessionId)
-		//check if there is any job for this worker
+		//check if there are any jobs for this worker
 		for k, _ := range w.canDo {
 			if self.wakeupWorker(k) {
 				break
@@ -486,7 +476,7 @@ func (self *Server) handleProtoEvt(e *event) {
 		}
 
 		e.result <- &Tuple{t0: args.t0, t1: false, t2: false,
-			t3: 0, t4: 100}
+			t3: 0, t4: 100} //always set Denominator to 100 if no status update
 	case WORK_DATA, WORK_WARNING, WORK_STATUS, WORK_COMPLETE,
 		WORK_FAIL, WORK_EXCEPTION:
 		self.handleWorkReport(e)

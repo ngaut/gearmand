@@ -345,3 +345,21 @@ func LocalIP() (net.IP, error) {
 	}
 	return nil, errors.New("cannot find local IP address")
 }
+
+func cmd2Priority(cmd uint32) int {
+	switch cmd {
+	case common.SUBMIT_JOB_HIGH, common.SUBMIT_JOB_HIGH_BG:
+		return common.PRIORITY_HIGH
+	}
+
+	return common.PRIORITY_LOW
+}
+
+func isBackGround(cmd uint32) bool {
+	switch cmd {
+	case common.SUBMIT_JOB_LOW_BG, common.SUBMIT_JOB_HIGH_BG:
+		return true
+	}
+
+	return false
+}
