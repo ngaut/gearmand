@@ -85,7 +85,7 @@ how to list all jobs ?
 	
 ## TODO:
 
-	worker timeout 
+	worker timeout (maybe job timeout is a better idea, such as big job)
 	queue max length limit
 	more tests
 	rest api
