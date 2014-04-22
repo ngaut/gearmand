@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 	gearmand.PublishCmdline()
 	gearmand.RegisterCoreDump(*path)
-	log.SetLevelByString("debug")
+	log.SetLevelByString("warning")
 	//log.SetHighlighting(false)
 	runtime.GOMAXPROCS(1)
 	if *storage == "redis" {

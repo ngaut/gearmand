@@ -185,7 +185,7 @@ func (self *Server) wakeupWorker(funcName string) bool {
 		log.Debug("wakeup sessionId", w.SessionId)
 
 		if !w.TrySend(wakeupReply) { //todo: queue it maybe
-			log.Warningf("worker sessionId %d is full, cap %d", w.SessionId, cap(w.Outbox))
+			log.Warningf("worker sessionId %d is full", w.SessionId)
 			continue
 		}
 
