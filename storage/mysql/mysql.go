@@ -32,7 +32,7 @@ func (self *MYSQLStorage) Init() error {
 		return err
 	}
 
-	return nil
+	return self.db.Ping()
 }
 
 // Save implements the Storage Save method.
