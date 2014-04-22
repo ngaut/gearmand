@@ -14,14 +14,14 @@ type session struct {
 	c         *Client
 }
 
-func (self *session) getWorker(sessionId int64, ch chan []byte, conn net.Conn) *Worker {
+func (self *session) getWorker(sessionId int64, inbox chan []byte, conn net.Conn) *Worker {
 	if self.w != nil {
 		return self.w
 	}
 
 	self.w = &Worker{
 		Conn: conn, status: wsSleep, Session: Session{SessionId: sessionId,
-			in: ch, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
+			in: inbox, ConnectAt: time.Now()}, runningJobs: make(map[string]*Job),
 		canDo: make(map[string]bool)}
 
 	return self.w
@@ -30,7 +30,7 @@ func (self *session) getWorker(sessionId int64, ch chan []byte, conn net.Conn) *
 func (self *session) handleConnection(s *Server, conn net.Conn) {
 	sessionId := s.allocSessionId()
 
-	ch := make(chan []byte, 200)
+	inbox := make(chan []byte, 200)
 	out := make(chan []byte, 200)
 	defer func() {
 		if self.w != nil || self.c != nil {
@@ -38,13 +38,13 @@ func (self *session) handleConnection(s *Server, conn net.Conn) {
 				result: createResCh()}
 			s.protoEvtCh <- e
 			<-e.result
-			close(ch) //notify writer to quit
+			close(inbox) //notify writer to quit
 		}
 	}()
 
 	log.Debug("new sessionId", sessionId, "address:", conn.RemoteAddr())
 
-	go queueingWriter(ch, out)
+	go queueingWriter(inbox, out)
 	go writer(conn, out)
 
 	r := bufio.NewReaderSize(conn, 256*1024)
@@ -69,19 +69,19 @@ func (self *session) handleConnection(s *Server, conn net.Conn) {
 
 		switch tp {
 		case CAN_DO, CAN_DO_TIMEOUT: //todo: CAN_DO_TIMEOUT timeout support
-			self.w = self.getWorker(sessionId, ch, conn)
+			self.w = self.getWorker(sessionId, inbox, conn)
 			s.protoEvtCh <- &event{tp: tp, args: &Tuple{
 				t0: self.w, t1: string(args[0])}}
 		case CANT_DO:
 			s.protoEvtCh <- &event{tp: tp, fromSessionId: sessionId,
 				args: &Tuple{t0: string(args[0])}}
 		case ECHO_REQ:
-			sendReply(ch, ECHO_RES, [][]byte{buf})
+			sendReply(inbox, ECHO_RES, [][]byte{buf})
 		case PRE_SLEEP:
-			self.w = self.getWorker(sessionId, ch, conn)
+			self.w = self.getWorker(sessionId, inbox, conn)
 			s.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: self.w}, fromSessionId: sessionId}
 		case SET_CLIENT_ID:
-			self.w = self.getWorker(sessionId, ch, conn)
+			self.w = self.getWorker(sessionId, inbox, conn)
 			s.protoEvtCh <- &event{tp: tp, args: &Tuple{t0: self.w, t1: string(args[0])}}
 		case GRAB_JOB_UNIQ:
 			if self.w == nil {
@@ -94,16 +94,16 @@ func (self *session) handleConnection(s *Server, conn net.Conn) {
 			job := (<-e.result).(*Job)
 			if job == nil {
 				log.Debug("sessionId", sessionId, "no job")
-				sendReplyResult(ch, nojobReply)
+				sendReplyResult(inbox, nojobReply)
 				break
 			}
 
 			//log.Debugf("%+v", job)
-			sendReply(ch, JOB_ASSIGN_UNIQ, [][]byte{
+			sendReply(inbox, JOB_ASSIGN_UNIQ, [][]byte{
 				[]byte(job.Handle), []byte(job.FuncName), []byte(job.Id), job.Data})
 		case SUBMIT_JOB, SUBMIT_JOB_LOW_BG, SUBMIT_JOB_LOW:
 			if self.c == nil {
-				self.c = &Client{Session: Session{SessionId: sessionId, in: ch,
+				self.c = &Client{Session: Session{SessionId: sessionId, in: inbox,
 					ConnectAt: time.Now()}}
 			}
 			e := &event{tp: tp,
@@ -112,14 +112,14 @@ func (self *session) handleConnection(s *Server, conn net.Conn) {
 			}
 			s.protoEvtCh <- e
 			handle := <-e.result
-			sendReply(ch, JOB_CREATED, [][]byte{[]byte(handle.(string))})
+			sendReply(inbox, JOB_CREATED, [][]byte{[]byte(handle.(string))})
 		case GET_STATUS:
 			e := &event{tp: tp, args: &Tuple{t0: args[0]},
 				result: createResCh()}
 			s.protoEvtCh <- e
 
 			resp := (<-e.result).(*Tuple)
-			sendReply(ch, STATUS_RES, [][]byte{resp.t0.([]byte),
+			sendReply(inbox, STATUS_RES, [][]byte{resp.t0.([]byte),
 				bool2bytes(resp.t1), bool2bytes(resp.t2),
 				int2bytes(resp.t3),
 				int2bytes(resp.t4)})
