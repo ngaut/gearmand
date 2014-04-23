@@ -15,12 +15,8 @@ type Client struct {
 }
 
 func (self *Session) Send(data []byte) bool {
-	select {
-	case self.in <- data:
-		return true
-	default:
-		return false
-	}
+	self.in <- data
+	return true
 }
 
 func queueingWriter(in, out chan []byte) {
