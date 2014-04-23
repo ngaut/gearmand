@@ -184,11 +184,7 @@ func (self *Server) wakeupWorker(funcName string) bool {
 
 		log.Debug("wakeup sessionId", w.SessionId)
 
-		if !w.TrySend(wakeupReply) { //todo: queue it maybe
-			log.Warningf("worker sessionId %d is full", w.SessionId)
-			continue
-		}
-
+		w.Send(wakeupReply)
 		return true
 	}
 
@@ -377,9 +373,7 @@ func (self *Server) handleWorkReport(e *event) {
 	//broadcast all clients, which is a really bad idea
 	//for _, c := range self.client {
 	//	reply := constructReply(e.tp, slice)
-	//	if !c.TrySend(reply) {
-	//		log.Warningf("client is full %+v", c)
-	//	}
+	//	c.Send(reply)
 	//}
 
 	//just send to original client, which is a bad idea too.
@@ -392,9 +386,7 @@ func (self *Server) handleWorkReport(e *event) {
 	}
 
 	reply := constructReply(e.tp, slice)
-	if !c.TrySend(reply) { //it's kind of slow
-		log.Warningf("client is full %+v", c)
-	}
+	c.Send(reply)
 }
 
 func (self *Server) handleProtoEvt(e *event) {

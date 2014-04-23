@@ -14,7 +14,7 @@ type Client struct {
 	Session
 }
 
-func (self *Session) TrySend(data []byte) bool {
+func (self *Session) Send(data []byte) bool {
 	select {
 	case self.in <- data:
 		return true
