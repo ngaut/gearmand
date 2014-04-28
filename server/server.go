@@ -24,6 +24,7 @@ type Server struct {
 	startSessionId int64
 	opCounter      map[uint32]int64
 	store          storage.JobQueue
+	forwardReport  int64
 }
 
 var ( //const replys, to avoid building it every time
@@ -387,6 +388,7 @@ func (self *Server) handleWorkReport(e *event) {
 
 	reply := constructReply(e.tp, slice)
 	c.Send(reply)
+	self.forwardReport++
 }
 
 func (self *Server) handleProtoEvt(e *event) {
@@ -507,6 +509,7 @@ func (self *Server) EvtLoop() {
 			stats.PubInt("job queue length", len(self.jobs))
 			stats.PubInt("queue count", len(self.funcWorker))
 			stats.PubInt("client count", len(self.client))
+			stats.PubInt64("forwardReport", self.forwardReport)
 		}
 	}
 }
