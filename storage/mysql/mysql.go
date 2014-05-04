@@ -11,7 +11,7 @@ import (
 const (
 	saveJobSQL = "INSERT INTO job(Handle,Id,Priority,CreateAt,FuncName,Data) VALUES(?,?,?,?,?,?)"
 	getJobsSQL = "SELECT * FROM job" //need to get all jobs
-	delJobSQL  = "DELETE FROM job WHERE Handle==?"
+	delJobSQL  = "DELETE FROM job WHERE Handle=?"
 )
 
 var (
