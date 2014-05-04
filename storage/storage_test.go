@@ -83,11 +83,10 @@ func TestAddAndGetJob(t *testing.T) {
 }
 
 func TestDoneJob(t *testing.T) {
-	failed := false
 	for i := 0; i < 2; i++ {
 		for _, job := range testJobs {
-			testDoneJob(t, redisQ, job, failed)
-			testDoneJob(t, mysqlStorage, job, failed)
+			testDoneJob(t, redisQ, job)
+			testDoneJob(t, mysqlStorage, job)
 		}
 	}
 }
@@ -124,8 +123,8 @@ func BenchmarkBasicOpts(b *testing.B) {
 			t := &testing.T{}
 
 			for _, j := range jobs {
-				testDoneJob(t, redisQ, j, false)
-				testDoneJob(t, mysqlStorage, j, false)
+				testDoneJob(t, redisQ, j)
+				testDoneJob(t, mysqlStorage, j)
 			}
 		}()
 	}
@@ -158,14 +157,8 @@ func testGetJob(t *testing.T, store JobQueue, retJobs []*Job) {
 	}
 }
 
-func testDoneJob(t *testing.T, store JobQueue, j *Job, failed bool) {
+func testDoneJob(t *testing.T, store JobQueue, j *Job) {
 	err := store.DoneJob(j)
-	if failed {
-		if err == nil {
-			t.Errorf("done job result wrong, job handle:%s", j.Handle)
-		}
-		return
-	}
 	if err != nil {
 		t.Errorf("failed to done job, err:%s", err.Error())
 	}
