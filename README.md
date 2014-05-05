@@ -64,23 +64,23 @@ then choose client librarys form
 
 how to track stats:
 
-	http://localhost:6060/debug/stats
+	http://localhost:3000/debug/stats
 	
 how to list workers by "cando" ?
 
-	http://localhost:6060/worker/function
+	http://localhost:3000/worker/function
 	
 how to list all workers ?
 
-	http://localhost:6060/worker
+	http://localhost:3000/worker
 
 how to query job status ?
 
-	http://localhost:6060/job/jobhandle
+	http://localhost:3000/job/jobhandle
 	
 how to list all jobs ?
 
-	http://localhost:6060/job
+	http://localhost:3000/job
 		
 	
 ## TODO:
