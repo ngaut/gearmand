@@ -84,7 +84,8 @@ how to list all jobs ?
 		
 	
 ## TODO:
-
+	refactor storage and tests
+	
 	worker timeout (maybe job timeout is a better idea, such as big job)
 	queue max length limit
 	more tests
