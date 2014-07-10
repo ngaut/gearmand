@@ -62,7 +62,7 @@ func (self *Server) getAllJobs() {
 }
 
 func (self *Server) Start(addr string) {
-	ln, err := net.Listen("tcp", ":4730")
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatal(err)
 	}
