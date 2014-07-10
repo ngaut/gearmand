@@ -2,8 +2,8 @@ package server
 
 import (
 	"github.com/go-martini/martini"
+	log "github.com/ngaut/logging"
 	"github.com/ngaut/stats"
-	"log"
 	"net/http"
 	"net/http/pprof"
 	_ "net/http/pprof"
