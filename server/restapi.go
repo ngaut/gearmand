@@ -2,9 +2,12 @@ package server
 
 import (
 	"github.com/go-martini/martini"
+	log "github.com/ngaut/logging"
 	"github.com/ngaut/stats"
+	"net/http"
 	"net/http/pprof"
 	_ "net/http/pprof"
+	"os"
 )
 
 func getJob(s *Server, params martini.Params) string {
@@ -26,6 +29,14 @@ func getWorker(s *Server, params martini.Params) string {
 }
 
 func registerWebHandler(s *Server) {
+	addr := os.Getenv("GEARMAND_MONITOR_ADDR")
+	if addr == "" {
+		addr = ":3000"
+	} else if addr == "-" {
+		// Don't start web monitor
+		return
+	}
+
 	m := martini.Classic()
 
 	m.Get("/debug/pprof", pprof.Index)
@@ -56,5 +67,5 @@ func registerWebHandler(s *Server) {
 		return getWorker(s, params)
 	})
 
-	m.Run()
+	log.Fatal(http.ListenAndServe(addr, m))
 }
