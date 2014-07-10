@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	saveJobSQL = "INSERT INTO job(Handle,Id,Priority,CreateAt,FuncName,Data) VALUES(?,?,?,?,?,?)"
-	getJobsSQL = "SELECT * FROM job" //need to get all jobs
-	delJobSQL  = "DELETE FROM job WHERE Handle=?"
+	createTableSQL = "CREATE TABLE IF NOT EXISTS job(Handle varchar(128),Id varchar(128),Priority INT, CreateAt TIMESTAMP,FuncName varchar(128),Data varchar(16384))"
+	saveJobSQL     = "INSERT INTO job(Handle,Id,Priority,CreateAt,FuncName,Data) VALUES(?,?,?,?,?,?)"
+	getJobsSQL     = "SELECT * FROM job" //need to get all jobs
+	delJobSQL      = "DELETE FROM job WHERE Handle=?"
 )
 
 var (
@@ -30,6 +31,12 @@ func (self *SQLite3Storage) Init() error {
 	if err != nil {
 		log.Error(err)
 		return err
+	}
+
+	_, create_err := self.db.Exec(createTableSQL)
+	if create_err != nil {
+		log.Error(create_err)
+		return create_err
 	}
 
 	return self.db.Ping()
