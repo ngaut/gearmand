@@ -81,7 +81,10 @@ how to query job status ?
 how to list all jobs ?
 
 	http://localhost:3000/job
-		
+	
+how to change monitor address ?
+
+	export GEARMAND_MONITOR_ADDR=:4567
 	
 ## TODO:
 	refactor storage and tests
