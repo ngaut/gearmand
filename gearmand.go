@@ -2,12 +2,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	gearmand "github.com/ngaut/gearmand/server"
 	"github.com/ngaut/gearmand/storage/mysql"
 	"github.com/ngaut/gearmand/storage/redisq"
 	"github.com/ngaut/gearmand/storage/sqlite3"
 	log "github.com/ngaut/logging"
 	"runtime"
+	"strconv"
 )
 
 var (
@@ -21,10 +23,13 @@ var (
 )
 
 func main() {
+	flag.Lookup("v").DefValue = fmt.Sprint(log.LOG_LEVEL_WARN)
 	flag.Parse()
 	gearmand.PublishCmdline()
 	gearmand.RegisterCoreDump(*path)
-	log.SetLevelByString("warning")
+	if lv, err := strconv.Atoi(flag.Lookup("v").Value.String()); err == nil {
+		log.SetLevel(log.LogLevel(lv))
+	}
 	//log.SetHighlighting(false)
 	runtime.GOMAXPROCS(1)
 	if *storage == "redis" {
