@@ -9,6 +9,7 @@ import (
 	"github.com/ngaut/gearmand/storage/sqlite3"
 	log "github.com/ngaut/logging"
 	"runtime"
+	"strconv"
 )
 
 var (
@@ -26,6 +27,9 @@ func main() {
 	flag.Parse()
 	gearmand.PublishCmdline()
 	gearmand.RegisterCoreDump(*path)
+	if lv, err := strconv.Atoi(flag.Lookup("v").Value.String()); err == nil {
+		log.SetLevel(log.LogLevel(lv))
+	}
 	//log.SetHighlighting(false)
 	runtime.GOMAXPROCS(1)
 	if *storage == "redis" {
