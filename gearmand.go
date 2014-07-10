@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	gearmand "github.com/ngaut/gearmand/server"
 	"github.com/ngaut/gearmand/storage/mysql"
 	"github.com/ngaut/gearmand/storage/redisq"
@@ -21,10 +22,10 @@ var (
 )
 
 func main() {
+	flag.Lookup("v").DefValue = fmt.Sprint(log.LOG_LEVEL_WARN)
 	flag.Parse()
 	gearmand.PublishCmdline()
 	gearmand.RegisterCoreDump(*path)
-	log.SetLevelByString("warning")
 	//log.SetHighlighting(false)
 	runtime.GOMAXPROCS(1)
 	if *storage == "redis" {
